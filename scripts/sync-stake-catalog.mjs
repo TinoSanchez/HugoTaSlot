@@ -397,6 +397,12 @@ async function main() {
   const dryRun = parseArgs();
   const forcePw = process.env.FORCE_PLAYWRIGHT === '1' || process.env.FORCE_PLAYWRIGHT === 'true';
 
+  if (process.env.GITHUB_SHA) {
+    console.log(
+      `GitHub Actions : script lancé depuis le commit ${process.env.GITHUB_SHA.slice(0, 7)} (vérifie que c’est bien le dernier sur main).`
+    );
+  }
+
   console.log(`Lecture ${JEUX_PATH}…`);
   const arr = await loadJeux();
 
