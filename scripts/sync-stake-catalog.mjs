@@ -1,9 +1,9 @@
 /**
  * Synchronise le catalogue Stake (GraphQL categorySlug=slots) dans jeux.json.
- * Stratégie en 2 temps :
- *   1) fetch() Node (rapide)
- *   2) si échec → Playwright Chromium : navigation stake.com puis requêtes GraphQL
- *      avec le même jar de cookies (contourne Cloudflare / ANJ côté TLS « navigateur »).
+ * Stratégie :
+ *   1) fetch() Node (rapide), optionnellement via STAKE_PROXY
+ *   2) si échec → Patchright + Chrome puis repli Playwright Chromium ; requêtes GraphQL
+ *      avec le même contexte (cookies). Proxy navigateur = même variable STAKE_PROXY.
  *
  * Usage :
  *   npm run sync:stake
@@ -11,12 +11,14 @@
  *   FORCE_PLAYWRIGHT=1 npm run sync:stake   # sauter le fetch Node
  *   CI / Cloudflare : PLAYWRIGHT_HEADFUL=1 + xvfb-run + Patchright + Chrome (voir workflow)
  *   SKIP_PATCHRIGHT=1 : forcer l’ancien Playwright Chromium si besoin
+ *   STAKE_PROXY / HTTPS_PROXY : URL de proxy (ex. résidentiel) — utile sur GitHub Actions
  */
 
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { ProxyAgent } from 'undici';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -60,8 +62,41 @@ function looksLikeCloudflareHtml(text) {
   return s.includes('Just a moment') || s.includes('challenges.cloudflare.com');
 }
 
+/** Priorité : STAKE_PROXY (secret CI) puis variables d’environnement classiques. */
+function stakeProxyUrlRaw() {
+  return (
+    process.env.STAKE_PROXY?.trim() ||
+    process.env.HTTPS_PROXY?.trim() ||
+    process.env.HTTP_PROXY?.trim() ||
+    ''
+  );
+}
+
+let fetchProxyDispatcher;
+function getFetchDispatcher() {
+  if (fetchProxyDispatcher === false) return undefined;
+  if (fetchProxyDispatcher) return fetchProxyDispatcher;
+  const raw = stakeProxyUrlRaw();
+  if (!raw) {
+    fetchProxyDispatcher = false;
+    return undefined;
+  }
+  const url = raw.startsWith('http') ? raw : `http://${raw}`;
+  console.log('Fetch Node : requêtes via proxy HTTP(S).');
+  fetchProxyDispatcher = new ProxyAgent(url);
+  return fetchProxyDispatcher;
+}
+
+function getBrowserProxyOption() {
+  const raw = stakeProxyUrlRaw();
+  if (!raw) return undefined;
+  const server = raw.startsWith('http') ? raw : `http://${raw}`;
+  console.log('Navigateur : proxy activé (Patchright / Playwright).');
+  return { server };
+}
+
 async function waitForCloudflareGate(page, maxMs = 120000) {
-  console.log('Playwright : attente éventuelle Cloudflare sur la page slots…');
+  console.log('Attente éventuelle Cloudflare sur la page slots…');
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     const title = await page.title().catch(() => '');
@@ -72,7 +107,7 @@ async function waitForCloudflareGate(page, maxMs = 120000) {
     }
     await new Promise((r) => setTimeout(r, 2500));
   }
-  console.warn('Playwright : titre « Just a moment » encore présent après délai ; poursuite quand même.');
+  console.warn('Titre « Just a moment » encore présent après délai ; poursuite quand même.');
 }
 
 function norm(s) {
@@ -103,6 +138,7 @@ async function fetchPageNative(after) {
     },
     operationName: 'CasinoGames',
   };
+  const dispatcher = getFetchDispatcher();
   const res = await fetch(STAKE_GQL, {
     method: 'POST',
     headers: {
@@ -114,6 +150,7 @@ async function fetchPageNative(after) {
       origin: 'https://stake.com',
     },
     body: JSON.stringify(body),
+    ...(dispatcher ? { dispatcher } : {}),
   });
   const text = await res.text();
   if (!res.ok) {
@@ -210,9 +247,7 @@ async function fetchPagePlaywrightWithRetries(page, after, { firstPage }) {
         msg.includes('Cloudflare') ||
         msg.includes('challenges.cloudflare');
       if (!retry || i === attempts - 1) throw e;
-      console.warn(
-        `Playwright GraphQL ${i + 1}/${attempts} échoué, nouvel essai dans ${delayMs}ms…`
-      );
+      console.warn(`GraphQL (navigateur) ${i + 1}/${attempts} échoué, nouvel essai dans ${delayMs}ms…`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
@@ -262,6 +297,8 @@ async function fetchAllStakeSlotsPlaywright() {
     process.env.PLAYWRIGHT_HEADFUL === '1' || process.env.PLAYWRIGHT_HEADFUL === 'true';
   const skipPatch = process.env.SKIP_PATCHRIGHT === '1' || process.env.SKIP_PATCHRIGHT === 'true';
 
+  const proxyOpt = getBrowserProxyOption();
+
   if (!skipPatch) {
     try {
       const { chromium } = await import('patchright');
@@ -272,6 +309,7 @@ async function fetchAllStakeSlotsPlaywright() {
         locale: 'en-US',
         timezoneId: 'America/New_York',
         viewport: null,
+        ...(proxyOpt ? { proxy: proxyOpt } : {}),
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
       });
       const page = context.pages()[0] ?? (await context.newPage());
@@ -306,6 +344,7 @@ async function fetchAllStakeSlotsPlaywright() {
     }
     browser = await chromium.launch({
       headless: !headful,
+      ...(proxyOpt ? { proxy: proxyOpt } : {}),
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -374,10 +413,16 @@ async function main() {
   console.log(`Entrées existantes : ${arr.length} (clés nom|provider : ${existingKeys.size})`);
   console.log('Récupération Stake (categorySlug=slots)…');
 
+  if (process.env.GITHUB_ACTIONS === 'true' && !stakeProxyUrlRaw()) {
+    console.log(
+      'CI : sans secret STAKE_PROXY (proxy HTTP/S), Cloudflare bloque souvent les IP GitHub — ajoute-le dans Settings → Secrets, ou sync en local avec VPN.'
+    );
+  }
+
   let nodes;
   let via = 'fetch-node';
   if (forcePw) {
-    console.log('FORCE_PLAYWRIGHT=1 → Playwright uniquement.');
+    console.log('FORCE_PLAYWRIGHT=1 → navigateur automatisé uniquement (Patchright / Playwright).');
     nodes = await fetchAllStakeSlotsPlaywright();
     via = 'playwright';
   } else {
@@ -385,14 +430,16 @@ async function main() {
       nodes = await fetchAllStakeSlotsNative();
     } catch (e1) {
       const d1 = e1.cause?.message || '';
-      console.warn(`\nFetch Node échoué (${e1.message} ${d1}). Fallback Playwright…`);
+      console.warn(
+        `\nFetch Node échoué (${e1.message} ${d1}). Fallback Patchright / Playwright…`
+      );
       try {
         nodes = await fetchAllStakeSlotsPlaywright();
         via = 'playwright';
       } catch (e2) {
-        console.error('\nPlaywright échoué :', e2.message);
+        console.error('\nNavigateur automatisé échoué :', e2.message);
         console.error(
-          '\nCI : Xvfb + Patchright + Google Chrome (voir .github/workflows). Si ça bloque encore, Cloudflare filtre probablement l’IP du runner — sync en local (VPN) puis commit, ou proxy résidentiel.'
+          '\n→ Vérifie les logs au-dessus : doit apparaître « Patchright + Chrome » puis éventuellement le repli Playwright. Contournement CF sur CI : secret STAKE_PROXY (proxy sortie « résidentielle »), ou npm run sync:stake en local (VPN) puis commit de jeux.json.'
         );
         process.exit(1);
       }
