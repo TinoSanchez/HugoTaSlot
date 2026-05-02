@@ -1,25 +1,14 @@
 /**
- * Synchronise le catalogue Stake (GraphQL casinoGames) dans jeux.json.
- * Par défaut : nouveautés (new-releases), page https://stake.com/fr/casino/group/new-releases
- *   STAKE_CATEGORY_SLUG=slots — tout le catalogue slots
- *   STAKE_LOCALE=fr|en|…  STAKE_NO_LOCALE=1 — URL sans préfixe de langue
- * Stratégie :
- *   1) fetch() Node (rapide), optionnellement via STAKE_PROXY
- *   2) si échec → Patchright + Chrome puis repli Playwright Chromium ; requêtes GraphQL
- *      avec le même contexte (cookies). Proxy navigateur = même variable STAKE_PROXY.
+ * Synchronise le catalogue Stake (GraphQL casinoGames, défaut categorySlug=slots) dans jeux.json.
  *
- * Usage :
- *   npm run sync:stake
- *   node scripts/sync-stake-catalog.mjs --dry-run
- *   FORCE_PLAYWRIGHT=1 npm run sync:stake   # sauter le fetch Node
- *   CI / Cloudflare : PLAYWRIGHT_HEADFUL=1 + xvfb-run + Patchright + Chrome (voir workflow)
- *   SKIP_PATCHRIGHT=1 : forcer l’ancien Playwright Chromium si besoin
- *   STAKE_PROXY / HTTPS_PROXY : URL de proxy (ex. résidentiel) — utile sur GitHub Actions
+ * GitHub Actions : définir STAKE_FETCH_ONLY=1 → uniquement fetch HTTP (pas de Playwright).
+ * En local, sans STAKE_FETCH_ONLY : fetch puis repli Playwright si échec.
+ *
+ * STAKE_CATEGORY_SLUG, STAKE_LOCALE, STAKE_PROXY / HTTPS_PROXY — voir stakeConfig().
  */
 
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { resolve, dirname, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ProxyAgent } from 'undici';
 
@@ -33,20 +22,23 @@ const PAGE_SIZE = 50;
 let stakeConfigCache;
 function stakeConfig() {
   if (stakeConfigCache) return stakeConfigCache;
-  const categorySlug = process.env.STAKE_CATEGORY_SLUG?.trim() || 'new-releases';
+  const categorySlug = process.env.STAKE_CATEGORY_SLUG?.trim() || 'slots';
   const noLocale =
     process.env.STAKE_NO_LOCALE === '1' || process.env.STAKE_NO_LOCALE === 'true';
-  const locale = noLocale
-    ? ''
-    : (process.env.STAKE_LOCALE?.trim() ?? 'fr');
+  const locale = noLocale ? '' : (process.env.STAKE_LOCALE?.trim() ?? '');
   const groupPath = locale
     ? `https://stake.com/${locale}/casino/group/${categorySlug}`
     : `https://stake.com/casino/group/${categorySlug}`;
   const xLanguage =
-    process.env.STAKE_X_LANGUAGE?.trim() ||
-    (locale === 'fr' ? 'fr' : locale ? locale : 'en');
+    process.env.STAKE_X_LANGUAGE?.trim() || (locale === 'fr' ? 'fr' : 'en');
   stakeConfigCache = { categorySlug, groupPath, xLanguage };
   return stakeConfigCache;
+}
+
+function isFetchOnly() {
+  return (
+    process.env.STAKE_FETCH_ONLY === '1' || process.env.STAKE_FETCH_ONLY === 'true'
+  );
 }
 
 // Aligné sur le schéma actuel (voir StakeAPI GraphQLQueries.CASINO_GAMES) : champ image = `thumb`, pas `thumbnailUrl`.
@@ -113,7 +105,7 @@ function getBrowserProxyOption() {
   const raw = stakeProxyUrlRaw();
   if (!raw) return undefined;
   const server = raw.startsWith('http') ? raw : `http://${raw}`;
-  console.log('Navigateur : proxy activé (Patchright / Playwright).');
+  console.log('Navigateur : proxy activé (Playwright).');
   return { server };
 }
 
@@ -325,43 +317,9 @@ function playwrightUiLocale() {
 async function fetchAllStakeSlotsPlaywright() {
   const headful =
     process.env.PLAYWRIGHT_HEADFUL === '1' || process.env.PLAYWRIGHT_HEADFUL === 'true';
-  const skipPatch = process.env.SKIP_PATCHRIGHT === '1' || process.env.SKIP_PATCHRIGHT === 'true';
 
   const proxyOpt = getBrowserProxyOption();
   const uiLocale = playwrightUiLocale();
-
-  if (!skipPatch) {
-    try {
-      const { chromium } = await import('patchright');
-      const userDataDir = mkdtempSync(join(tmpdir(), 'stake-patchright-'));
-      const context = await chromium.launchPersistentContext(userDataDir, {
-        channel: 'chrome',
-        headless: !headful,
-        locale: uiLocale,
-        timezoneId: 'America/New_York',
-        viewport: null,
-        ...(proxyOpt ? { proxy: proxyOpt } : {}),
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      });
-      const page = context.pages()[0] ?? (await context.newPage());
-      try {
-        return await stakeBrowserFetchAllSlots(
-          page,
-          `Patchright + Chrome (headless=${!headful})`
-        );
-      } finally {
-        await context.close().catch(() => {});
-        try {
-          rmSync(userDataDir, { recursive: true, force: true });
-        } catch (_) {}
-      }
-    } catch (e) {
-      console.warn(
-        'Patchright / Google Chrome indisponible ou erreur au lancement — repli Playwright Chromium :',
-        e.message || e
-      );
-    }
-  }
 
   let browser;
   try {
@@ -392,7 +350,7 @@ async function fetchAllStakeSlotsPlaywright() {
       timezoneId: 'America/New_York',
     });
     const page = await context.newPage();
-    return await stakeBrowserFetchAllSlots(page, `Playwright Chromium fallback (headless=${!headful})`);
+    return await stakeBrowserFetchAllSlots(page, `Playwright Chromium (headless=${!headful})`);
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
@@ -453,34 +411,43 @@ async function main() {
     `Récupération Stake → categorySlug="${sc.categorySlug}" referer=${sc.groupPath} (x-language=${sc.xLanguage})`
   );
 
-  if (process.env.GITHUB_ACTIONS === 'true' && !stakeProxyUrlRaw()) {
+  if (isFetchOnly() && forcePw) {
+    console.error('STAKE_FETCH_ONLY=1 est incompatible avec FORCE_PLAYWRIGHT=1.');
+    process.exit(1);
+  }
+
+  if (isFetchOnly()) {
+    console.log('STAKE_FETCH_ONLY=1 → uniquement requêtes HTTP (pas de navigateur).');
+  } else if (process.env.GITHUB_ACTIONS === 'true' && !stakeProxyUrlRaw()) {
     console.log(
-      'CI : sans secret STAKE_PROXY (proxy HTTP/S), Cloudflare bloque souvent les IP GitHub — ajoute-le dans Settings → Secrets, ou sync en local avec VPN.'
+      'Sans STAKE_PROXY, Cloudflare peut bloquer le fetch ; en local tu peux retirer STAKE_FETCH_ONLY pour activer le fallback Playwright.'
     );
   }
 
   let nodes;
   let via = 'fetch-node';
   if (forcePw) {
-    console.log('FORCE_PLAYWRIGHT=1 → navigateur automatisé uniquement (Patchright / Playwright).');
+    console.log('FORCE_PLAYWRIGHT=1 → Playwright uniquement.');
     nodes = await fetchAllStakeSlotsPlaywright();
     via = 'playwright';
+  } else if (isFetchOnly()) {
+    try {
+      nodes = await fetchAllStakeSlotsNative();
+    } catch (e1) {
+      console.error('Fetch GraphQL échoué (mode fetch seul, pas de navigateur) :', e1.message);
+      process.exit(1);
+    }
   } else {
     try {
       nodes = await fetchAllStakeSlotsNative();
     } catch (e1) {
       const d1 = e1.cause?.message || '';
-      console.warn(
-        `\nFetch Node échoué (${e1.message} ${d1}). Fallback Patchright / Playwright…`
-      );
+      console.warn(`\nFetch Node échoué (${e1.message} ${d1}). Fallback Playwright…`);
       try {
         nodes = await fetchAllStakeSlotsPlaywright();
         via = 'playwright';
       } catch (e2) {
         console.error('\nNavigateur automatisé échoué :', e2.message);
-        console.error(
-          '\n→ Vérifie les logs au-dessus : doit apparaître « Patchright + Chrome » puis éventuellement le repli Playwright. Contournement CF sur CI : secret STAKE_PROXY (proxy sortie « résidentielle »), ou npm run sync:stake en local (VPN) puis commit de jeux.json.'
-        );
         process.exit(1);
       }
     }

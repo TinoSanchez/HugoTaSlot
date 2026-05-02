@@ -1,7 +1,8 @@
-# Synchronise le catalogue Stake (GraphQL, catégorie "slots") dans jeux.json.
-# Les runners GitHub sont hors France → contournement typique du blocage ANJ / TLS sur stake.com
+# Synchronise le catalogue Stake (GraphQL) dans jeux.json.
+# Une seule passe HTTP (Node fetch) — pas de Playwright / navigateur.
+# Secret optionnel : STAKE_PROXY — si Cloudflare bloque le runner.
 #
-# Déclenchement manuel : Actions → « Sync Stake → jeux.json » → Run workflow
+# Actions → « Sync Stake → jeux.json » → Run workflow
 
 name: Sync Stake → jeux.json
 
@@ -25,22 +26,11 @@ jobs:
       - name: Installer les dépendances
         run: npm ci
 
-      # Patchright + Chrome « réel » : moins détectable que Playwright+Chromium pour Cloudflare.
-      - name: Installer Google Chrome (Patchright)
-        run: npx patchright install chrome --with-deps
-
-      - name: Installer Chromium (Playwright, repli)
-        run: npx playwright install chromium --with-deps
-
-      - name: Installer Xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
-      # Secret optionnel repo : STAKE_PROXY=http://user:pass@host:port (proxy résidentiel / mobile pour passer Cloudflare)
-      - name: Récupérer les slots Stake et fusionner
+      - name: Récupérer les slots Stake (fetch uniquement)
         env:
-          PLAYWRIGHT_HEADFUL: "1"
+          STAKE_FETCH_ONLY: "1"
           STAKE_PROXY: ${{ secrets.STAKE_PROXY }}
-        run: xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/sync-stake-catalog.mjs
+        run: node scripts/sync-stake-catalog.mjs
 
       - name: Commit & push si jeux.json a changé
         run: |

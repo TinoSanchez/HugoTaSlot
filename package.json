@@ -20,7 +20,6 @@
   "type": "commonjs",
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",
-    "patchright": "^1.59.4",
     "playwright": "^1.59.1",
     "tesseract.js": "^7.0.0"
   },
