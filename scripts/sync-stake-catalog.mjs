@@ -6,7 +6,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ProxyAgent } from 'undici';
 
@@ -136,8 +136,84 @@ function dedupeKey(nom, prov) {
   return `${norm(nom)}|${norm(prov)}`;
 }
 
-function parseArgs() {
-  return process.argv.includes('--dry-run');
+function parseCliArgs() {
+  let dryRun = false;
+  let manualFile = null;
+  for (const a of process.argv.slice(2)) {
+    if (a === '--dry-run') dryRun = true;
+    const m = /^--(?:from-file|manual)=(.*)$/.exec(a);
+    if (m) manualFile = m[1]?.replace(/^["']|["']$/g, '') || null;
+  }
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.log(`
+sync-stake-catalog.mjs — fusion Stake → jeux.json
+
+  node scripts/sync-stake-catalog.mjs
+  node scripts/sync-stake-catalog.mjs --dry-run
+  node scripts/sync-stake-catalog.mjs --from-file=./export-graphql.json
+
+Sans réseau : ouvre Stake dans le navigateur, onglet Réseau → requête POST …/_api/graphql
+→ réponse → copier dans un fichier JSON → --from-file=…
+
+Variables : STAKE_CATEGORY_SLUG, STAKE_PROXY, FORCE_PLAYWRIGHT=1,
+  PLAYWRIGHT_HEADLESS=1 (Windows : fenêtre visible par défaut pour le fallback Playwright)
+`);
+    process.exit(0);
+  }
+  return { dryRun, manualFile };
+}
+
+function resolveManualPath(p) {
+  if (!p) return null;
+  return isAbsolute(p) ? p : resolve(process.cwd(), p);
+}
+
+/** Parse export GraphQL ou tableau de jeux Stake bruts. */
+function loadNodesFromManualFile(filePath) {
+  const abs = resolveManualPath(filePath);
+  const raw = readFileSync(abs, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    const first = parsed[0];
+    if (first && typeof first === 'object' && first.node && !first.slug) {
+      return parsed.map((e) => e.node).filter(Boolean);
+    }
+    return parsed.filter((n) => n && (n.slug || n.name));
+  }
+  if (parsed?.data?.casinoGames?.edges) {
+    return parsed.data.casinoGames.edges.map((e) => e.node).filter(Boolean);
+  }
+  if (parsed?.casinoGames?.edges) {
+    return parsed.casinoGames.edges.map((e) => e.node).filter(Boolean);
+  }
+  if (parsed?.edges && Array.isArray(parsed.edges)) {
+    return parsed.edges.map((e) => e.node).filter(Boolean);
+  }
+  throw new Error(
+    'Format non reconnu : tableau de { node }, ou { data: { casinoGames: { edges } } }, etc.'
+  );
+}
+
+function explainStakeFailure(err) {
+  const msg = `${err?.message || err || ''} ${err?.cause?.message || ''}`;
+  console.error('\n——— Pourquoi ça bloque souvent en France ———');
+  if (/anj\.fr|CERT_|TLS|certificate/i.test(msg)) {
+    console.error(
+      '• Certificat ANJ / DNS : le FAI redirige stake.com → ce n’est pas le vrai site. Solution : VPN, 4G, ou autre réseau.'
+    );
+  }
+  if (/Just a moment|cloudflare|403/i.test(msg)) {
+    console.error(
+      '• Cloudflare 403 : le site refuse les requêtes automatisées ou cette IP. Essaie VPN, ou --from-file avec une réponse copiée depuis ton navigateur.'
+    );
+  }
+  if (!/anj\.fr|Just a moment|403/i.test(msg)) {
+    console.error('• Réessaie avec VPN / 4G, ou import manuel : --from-file=…');
+  }
+  console.error(
+    '• Playwright : sous Windows une fenêtre Chrome peut s’ouvrir (anti-Cloudflare). Sinon PLAYWRIGHT_HEADFUL=1.'
+  );
+  console.error('———\n');
 }
 
 async function fetchPageNative(after) {
@@ -313,8 +389,12 @@ function playwrightUiLocale() {
 }
 
 async function fetchAllStakeSlotsPlaywright() {
+  const forceHeadless =
+    process.env.PLAYWRIGHT_HEADLESS === '1' || process.env.PLAYWRIGHT_HEADLESS === 'true';
   const headful =
-    process.env.PLAYWRIGHT_HEADFUL === '1' || process.env.PLAYWRIGHT_HEADFUL === 'true';
+    process.env.PLAYWRIGHT_HEADFUL === '1' ||
+    process.env.PLAYWRIGHT_HEADFUL === 'true' ||
+    (!forceHeadless && process.platform === 'win32');
 
   const proxyOpt = getBrowserProxyOption();
   const uiLocale = playwrightUiLocale();
@@ -381,7 +461,7 @@ async function loadJeux() {
 }
 
 async function main() {
-  const dryRun = parseArgs();
+  const { dryRun, manualFile } = parseCliArgs();
   const forcePw = process.env.FORCE_PLAYWRIGHT === '1' || process.env.FORCE_PLAYWRIGHT === 'true';
 
   console.log(`Lecture ${JEUX_PATH}…`);
@@ -398,10 +478,19 @@ async function main() {
   }
 
   console.log(`Entrées existantes : ${arr.length} (clés nom|provider : ${existingKeys.size})`);
-  const sc = stakeConfig();
-  console.log(
-    `Récupération Stake → categorySlug="${sc.categorySlug}" referer=${sc.groupPath} (x-language=${sc.xLanguage})`
-  );
+  if (!manualFile) {
+    const sc = stakeConfig();
+    console.log(
+      `Récupération Stake → categorySlug="${sc.categorySlug}" referer=${sc.groupPath} (x-language=${sc.xLanguage})`
+    );
+  } else {
+    console.log('Import depuis fichier (--from-file), pas d’appel réseau.');
+  }
+
+  if (manualFile && forcePw) {
+    console.error('--from-file est incompatible avec FORCE_PLAYWRIGHT=1.');
+    process.exit(1);
+  }
 
   if (isFetchOnly() && forcePw) {
     console.error('STAKE_FETCH_ONLY=1 est incompatible avec FORCE_PLAYWRIGHT=1.');
@@ -414,15 +503,32 @@ async function main() {
 
   let nodes;
   let via = 'fetch-node';
-  if (forcePw) {
+
+  if (manualFile) {
+    console.log(`Mode fichier : ${resolveManualPath(manualFile)}`);
+    try {
+      nodes = loadNodesFromManualFile(manualFile);
+      via = 'fichier-manuel';
+    } catch (e) {
+      console.error('Lecture du fichier :', e.message);
+      process.exit(1);
+    }
+  } else if (forcePw) {
     console.log('FORCE_PLAYWRIGHT=1 → Playwright uniquement.');
-    nodes = await fetchAllStakeSlotsPlaywright();
-    via = 'playwright';
+    try {
+      nodes = await fetchAllStakeSlotsPlaywright();
+      via = 'playwright';
+    } catch (e) {
+      explainStakeFailure(e);
+      console.error(e);
+      process.exit(1);
+    }
   } else if (isFetchOnly()) {
     try {
       nodes = await fetchAllStakeSlotsNative();
     } catch (e1) {
-      console.error('Fetch GraphQL échoué (mode fetch seul, pas de navigateur) :', e1.message);
+      console.error('Fetch GraphQL échoué (mode fetch seul) :', e1.message);
+      explainStakeFailure(e1);
       process.exit(1);
     }
   } else {
@@ -436,6 +542,7 @@ async function main() {
         via = 'playwright';
       } catch (e2) {
         console.error('\nNavigateur automatisé échoué :', e2.message);
+        explainStakeFailure(e2);
         process.exit(1);
       }
     }
