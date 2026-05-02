@@ -1,8 +1,6 @@
 /**
  * Synchronise le catalogue Stake (GraphQL casinoGames, défaut categorySlug=slots) dans jeux.json.
- *
- * GitHub Actions : définir STAKE_FETCH_ONLY=1 → uniquement fetch HTTP (pas de Playwright).
- * En local, sans STAKE_FETCH_ONLY : fetch puis repli Playwright si échec.
+ * fetch Node puis, si échec, repli Playwright. STAKE_FETCH_ONLY=1 → fetch uniquement (pas de navigateur).
  *
  * STAKE_CATEGORY_SLUG, STAKE_LOCALE, STAKE_PROXY / HTTPS_PROXY — voir stakeConfig().
  */
@@ -386,12 +384,6 @@ async function main() {
   const dryRun = parseArgs();
   const forcePw = process.env.FORCE_PLAYWRIGHT === '1' || process.env.FORCE_PLAYWRIGHT === 'true';
 
-  if (process.env.GITHUB_SHA) {
-    console.log(
-      `GitHub Actions : script lancé depuis le commit ${process.env.GITHUB_SHA.slice(0, 7)} (vérifie que c’est bien le dernier sur main).`
-    );
-  }
-
   console.log(`Lecture ${JEUX_PATH}…`);
   const arr = await loadJeux();
 
@@ -418,10 +410,6 @@ async function main() {
 
   if (isFetchOnly()) {
     console.log('STAKE_FETCH_ONLY=1 → uniquement requêtes HTTP (pas de navigateur).');
-  } else if (process.env.GITHUB_ACTIONS === 'true' && !stakeProxyUrlRaw()) {
-    console.log(
-      'Sans STAKE_PROXY, Cloudflare peut bloquer le fetch ; en local tu peux retirer STAKE_FETCH_ONLY pour activer le fallback Playwright.'
-    );
   }
 
   let nodes;

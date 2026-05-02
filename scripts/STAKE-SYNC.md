@@ -2,22 +2,18 @@
 
 Le script `sync-stake-catalog.mjs` interroge l’API GraphQL de Stake (`casinoGames`, par défaut `categorySlug=slots`) et **n’ajoute** que les jeux **absents** (déduplication `nom` + `provider` normalisés).
 
-- **Par défaut** : `https://stake.com/casino/group/slots` et `x-language` adapté. Autre groupe : `STAKE_CATEGORY_SLUG=…` (ex. `new-releases`).
+- **Par défaut** : `https://stake.com/casino/group/slots`. Autre groupe : `STAKE_CATEGORY_SLUG=…` (ex. `new-releases`).
 
-## GitHub Actions (une passe HTTP, sans navigateur)
+## En local
 
-Le workflow définit `STAKE_FETCH_ONLY=1` : uniquement **fetch** Node vers `/_api/graphql` — **pas** de Playwright. Secret optionnel **`STAKE_PROXY`** si le runner est bloqué par Cloudflare.
+1. `npm run sync:stake` — d’abord `fetch`, puis **Playwright** si besoin (`npx playwright install chromium` une fois).
+2. `STAKE_FETCH_ONLY=1` — uniquement le fetch HTTP, sans navigateur.
+3. `FORCE_PLAYWRIGHT=1` — uniquement Playwright.
+4. `STAKE_PROXY` / `HTTPS_PROXY` — proxy pour le fetch et le navigateur.
 
-## En local : fetch + repli Playwright
+## France / ANJ / Cloudflare
 
-Sans `STAKE_FETCH_ONLY`, si le `fetch` échoue, le script tente **Playwright** (installe Chromium : `npx playwright install chromium`).
-
-- `FORCE_PLAYWRIGHT=1` : forcer uniquement le navigateur.
-- `STAKE_FETCH_ONLY=1` : forcer uniquement le fetch (comme en CI).
-
-## Blocage ANJ / France
-
-En local, l’ANJ ou TLS peut empêcher d’atteindre Stake. **VPN** ou autre réseau : puis `npm run sync:stake` et commit de `jeux.json`.
+Souvent **TLS ANJ** ou **403 Cloudflare** en direct : essaie un **VPN** ou une **box 4G**, puis relance la sync.
 
 ## Commandes
 
