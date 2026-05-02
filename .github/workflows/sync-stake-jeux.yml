@@ -25,10 +25,13 @@ jobs:
       - name: Installer les dépendances
         run: npm ci
 
-      - name: Installer Chromium (Playwright)
+      # Patchright + Chrome « réel » : moins détectable que Playwright+Chromium pour Cloudflare.
+      - name: Installer Google Chrome (Patchright)
+        run: npx patchright install chrome --with-deps
+
+      - name: Installer Chromium (Playwright, repli)
         run: npx playwright install chromium --with-deps
 
-      # Cloudflare « Just a moment » bloque souvent le headless ; navigateur « visible » sous Xvfb + retries dans le script.
       - name: Installer Xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 

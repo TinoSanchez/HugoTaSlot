@@ -9,11 +9,13 @@
  *   npm run sync:stake
  *   node scripts/sync-stake-catalog.mjs --dry-run
  *   FORCE_PLAYWRIGHT=1 npm run sync:stake   # sauter le fetch Node
- *   CI / Cloudflare : PLAYWRIGHT_HEADFUL=1 + xvfb-run (voir workflow GitHub)
+ *   CI / Cloudflare : PLAYWRIGHT_HEADFUL=1 + xvfb-run + Patchright + Chrome (voir workflow)
+ *   SKIP_PATCHRIGHT=1 : forcer l’ancien Playwright Chromium si besoin
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -217,7 +219,81 @@ async function fetchPagePlaywrightWithRetries(page, after, { firstPage }) {
   throw lastErr;
 }
 
+async function stakeBrowserFetchAllSlots(page, label) {
+  console.log(`${label} : navigation stake.com/casino/group/slots …`);
+  try {
+    await page.goto('https://stake.com/casino/group/slots', {
+      waitUntil: 'domcontentloaded',
+      timeout: 120000,
+    });
+  } catch (e) {
+    console.warn('Navigation (timeout possible CF) :', e.message, '— on tente quand même le GraphQL.');
+  }
+  await waitForCloudflareGate(page);
+
+  const all = [];
+  let after = null;
+  let pages = 0;
+  const maxPages = 500;
+  for (;;) {
+    pages += 1;
+    if (pages > maxPages) throw new Error('Trop de pages (limite sécurité).');
+    const data = await fetchPagePlaywrightWithRetries(page, after, { firstPage: pages === 1 });
+    const conn = data?.casinoGames;
+    if (!conn) {
+      throw new Error('Réponse GraphQL sans casinoGames (réponse tronquée ou blocage).');
+    }
+    const edges = conn.edges || [];
+    for (const e of edges) {
+      const n = e?.node;
+      if (n) all.push(n);
+    }
+    const pi = conn.pageInfo;
+    if (!pi?.hasNextPage) break;
+    after = pi.endCursor || null;
+    if (!after) break;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return all;
+}
+
 async function fetchAllStakeSlotsPlaywright() {
+  const headful =
+    process.env.PLAYWRIGHT_HEADFUL === '1' || process.env.PLAYWRIGHT_HEADFUL === 'true';
+  const skipPatch = process.env.SKIP_PATCHRIGHT === '1' || process.env.SKIP_PATCHRIGHT === 'true';
+
+  if (!skipPatch) {
+    try {
+      const { chromium } = await import('patchright');
+      const userDataDir = mkdtempSync(join(tmpdir(), 'stake-patchright-'));
+      const context = await chromium.launchPersistentContext(userDataDir, {
+        channel: 'chrome',
+        headless: !headful,
+        locale: 'en-US',
+        timezoneId: 'America/New_York',
+        viewport: null,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+      const page = context.pages()[0] ?? (await context.newPage());
+      try {
+        return await stakeBrowserFetchAllSlots(
+          page,
+          `Patchright + Chrome (headless=${!headful})`
+        );
+      } finally {
+        await context.close().catch(() => {});
+        try {
+          rmSync(userDataDir, { recursive: true, force: true });
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.warn(
+        'Patchright / Google Chrome indisponible ou erreur au lancement — repli Playwright Chromium :',
+        e.message || e
+      );
+    }
+  }
+
   let browser;
   try {
     let chromium;
@@ -228,8 +304,6 @@ async function fetchAllStakeSlotsPlaywright() {
         'Playwright introuvable. Exécute : npm install playwright && npx playwright install chromium'
       );
     }
-    const headful =
-      process.env.PLAYWRIGHT_HEADFUL === '1' || process.env.PLAYWRIGHT_HEADFUL === 'true';
     browser = await chromium.launch({
       headless: !headful,
       args: [
@@ -248,43 +322,7 @@ async function fetchAllStakeSlotsPlaywright() {
       timezoneId: 'America/New_York',
     });
     const page = await context.newPage();
-    console.log(
-      `Playwright Chromium (headless=${!headful}) : navigation stake.com/casino/group/slots …`
-    );
-    try {
-      await page.goto('https://stake.com/casino/group/slots', {
-        waitUntil: 'domcontentloaded',
-        timeout: 120000,
-      });
-    } catch (e) {
-      console.warn('Navigation (timeout possible CF) :', e.message, '— on tente quand même le GraphQL.');
-    }
-    await waitForCloudflareGate(page);
-
-    const all = [];
-    let after = null;
-    let pages = 0;
-    const maxPages = 500;
-    for (;;) {
-      pages += 1;
-      if (pages > maxPages) throw new Error('Trop de pages (limite sécurité).');
-      const data = await fetchPagePlaywrightWithRetries(page, after, { firstPage: pages === 1 });
-      const conn = data?.casinoGames;
-      if (!conn) {
-        throw new Error('Réponse GraphQL sans casinoGames (réponse tronquée ou blocage).');
-      }
-      const edges = conn.edges || [];
-      for (const e of edges) {
-        const n = e?.node;
-        if (n) all.push(n);
-      }
-      const pi = conn.pageInfo;
-      if (!pi?.hasNextPage) break;
-      after = pi.endCursor || null;
-      if (!after) break;
-      await new Promise((r) => setTimeout(r, 120));
-    }
-    return all;
+    return await stakeBrowserFetchAllSlots(page, `Playwright Chromium fallback (headless=${!headful})`);
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
@@ -354,7 +392,7 @@ async function main() {
       } catch (e2) {
         console.error('\nPlaywright échoué :', e2.message);
         console.error(
-          '\nSi tu es sur CI : workflow avec Xvfb + PLAYWRIGHT_HEADFUL=1 (voir .github/workflows/sync-stake-jeux.yml). En local derrière Cloudflare : VPN ou réessayer plus tard.'
+          '\nCI : Xvfb + Patchright + Google Chrome (voir .github/workflows). Si ça bloque encore, Cloudflare filtre probablement l’IP du runner — sync en local (VPN) puis commit, ou proxy résidentiel.'
         );
         process.exit(1);
       }
