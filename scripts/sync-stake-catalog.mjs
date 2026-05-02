@@ -22,16 +22,17 @@ const JEUX_PATH = resolve(ROOT, 'jeux.json');
 const STAKE_GQL = 'https://stake.com/_api/graphql';
 const PAGE_SIZE = 50;
 
+// Aligné sur le schéma actuel (voir StakeAPI GraphQLQueries.CASINO_GAMES) : champ image = `thumb`, pas `thumbnailUrl`.
 const QUERY = `
-query CasinoGames($categorySlug: String!, $first: Int!, $after: String) {
-  casinoGames(categorySlug: $categorySlug, first: $first, after: $after) {
+query CasinoGames($first: Int, $after: String, $categorySlug: String) {
+  casinoGames(first: $first, after: $after, categorySlug: $categorySlug) {
     edges {
       node {
         id
         name
         slug
-        thumbnailUrl
-        provider { name slug }
+        thumb
+        provider { name }
       }
     }
     pageInfo {
@@ -231,7 +232,7 @@ function toJeuxEntry(node) {
     nom: name,
     provider: prov || '—',
     rtp: '',
-    image: String(node.thumbnailUrl || '').trim(),
+    image: String(node.thumb || node.thumbnailUrl || '').trim(),
     gamdomUrl: `https://stake.com/casino/games/${encodeURIComponent(slug)}`,
     devise: { active: 'USD', symbole: '$' },
   };
