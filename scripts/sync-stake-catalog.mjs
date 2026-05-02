@@ -9,6 +9,7 @@
  *   npm run sync:stake
  *   node scripts/sync-stake-catalog.mjs --dry-run
  *   FORCE_PLAYWRIGHT=1 npm run sync:stake   # sauter le fetch Node
+ *   CI / Cloudflare : PLAYWRIGHT_HEADFUL=1 + xvfb-run (voir workflow GitHub)
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -42,8 +43,35 @@ query CasinoGames($first: Int, $after: String, $categorySlug: String) {
   }
 }`.trim();
 
-const BROWSER_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+function platformUserAgent() {
+  if (process.platform === 'darwin') {
+    return 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  }
+  if (process.platform === 'win32') {
+    return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  }
+  return 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+}
+
+function looksLikeCloudflareHtml(text) {
+  const s = String(text || '').slice(0, 1200);
+  return s.includes('Just a moment') || s.includes('challenges.cloudflare.com');
+}
+
+async function waitForCloudflareGate(page, maxMs = 120000) {
+  console.log('Playwright : attente éventuelle Cloudflare sur la page slots…');
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    const title = await page.title().catch(() => '');
+    const lower = title.toLowerCase();
+    if (title && !lower.includes('just a moment')) {
+      await new Promise((r) => setTimeout(r, 4000));
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  console.warn('Playwright : titre « Just a moment » encore présent après délai ; poursuite quand même.');
+}
 
 function norm(s) {
   return String(s || '')
@@ -78,7 +106,7 @@ async function fetchPageNative(after) {
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      'user-agent': BROWSER_UA,
+      'user-agent': platformUserAgent(),
       'x-language': 'en',
       referer: 'https://stake.com/casino/group/slots',
       origin: 'https://stake.com',
@@ -125,7 +153,7 @@ async function fetchAllStakeSlotsNative() {
   return all;
 }
 
-async function fetchPagePlaywright(page, after) {
+async function fetchPagePlaywrightOnce(page, after) {
   const resp = await page.request.post(STAKE_GQL, {
     data: {
       query: QUERY,
@@ -146,7 +174,10 @@ async function fetchPagePlaywright(page, after) {
   const text = await resp.text();
   const status = resp.status();
   if (status < 200 || status >= 300) {
-    throw new Error(`Stake GraphQL HTTP ${status} : ${text.slice(0, 500)}`);
+    const hint = looksLikeCloudflareHtml(text)
+      ? ' (page Cloudflare — cookies peut‑être pas encore valides)'
+      : '';
+    throw new Error(`Stake GraphQL HTTP ${status}${hint} : ${text.slice(0, 500)}`);
   }
   let json;
   try {
@@ -160,6 +191,32 @@ async function fetchPagePlaywright(page, after) {
   return json.data;
 }
 
+async function fetchPagePlaywrightWithRetries(page, after, { firstPage }) {
+  const attempts = firstPage ? 24 : 5;
+  const delayMs = 3500;
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchPagePlaywrightOnce(page, after);
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e.message || '');
+      const retry =
+        msg.includes('403') ||
+        msg.includes('503') ||
+        msg.includes('Just a moment') ||
+        msg.includes('Cloudflare') ||
+        msg.includes('challenges.cloudflare');
+      if (!retry || i === attempts - 1) throw e;
+      console.warn(
+        `Playwright GraphQL ${i + 1}/${attempts} échoué, nouvel essai dans ${delayMs}ms…`
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 async function fetchAllStakeSlotsPlaywright() {
   let browser;
   try {
@@ -171,18 +228,29 @@ async function fetchAllStakeSlotsPlaywright() {
         'Playwright introuvable. Exécute : npm install playwright && npx playwright install chromium'
       );
     }
+    const headful =
+      process.env.PLAYWRIGHT_HEADFUL === '1' || process.env.PLAYWRIGHT_HEADFUL === 'true';
     browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
+      headless: !headful,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--window-size=1920,1080',
+      ],
     });
+    const ua = platformUserAgent();
     const context = await browser.newContext({
-      userAgent: BROWSER_UA,
+      userAgent: ua,
       viewport: { width: 1366, height: 768 },
       locale: 'en-US',
       timezoneId: 'America/New_York',
     });
     const page = await context.newPage();
-    console.log('Playwright : navigation stake.com/casino/group/slots …');
+    console.log(
+      `Playwright Chromium (headless=${!headful}) : navigation stake.com/casino/group/slots …`
+    );
     try {
       await page.goto('https://stake.com/casino/group/slots', {
         waitUntil: 'domcontentloaded',
@@ -191,7 +259,7 @@ async function fetchAllStakeSlotsPlaywright() {
     } catch (e) {
       console.warn('Navigation (timeout possible CF) :', e.message, '— on tente quand même le GraphQL.');
     }
-    await new Promise((r) => setTimeout(r, 6000));
+    await waitForCloudflareGate(page);
 
     const all = [];
     let after = null;
@@ -200,7 +268,7 @@ async function fetchAllStakeSlotsPlaywright() {
     for (;;) {
       pages += 1;
       if (pages > maxPages) throw new Error('Trop de pages (limite sécurité).');
-      const data = await fetchPagePlaywright(page, after);
+      const data = await fetchPagePlaywrightWithRetries(page, after, { firstPage: pages === 1 });
       const conn = data?.casinoGames;
       if (!conn) {
         throw new Error('Réponse GraphQL sans casinoGames (réponse tronquée ou blocage).');
@@ -285,7 +353,9 @@ async function main() {
         via = 'playwright';
       } catch (e2) {
         console.error('\nPlaywright échoué :', e2.message);
-        console.error('\nDernière option : lance le workflow GitHub Actions « Sync Stake → jeux.json » (runner US + Chromium).');
+        console.error(
+          '\nSi tu es sur CI : workflow avec Xvfb + PLAYWRIGHT_HEADFUL=1 (voir .github/workflows/sync-stake-jeux.yml). En local derrière Cloudflare : VPN ou réessayer plus tard.'
+        );
         process.exit(1);
       }
     }
