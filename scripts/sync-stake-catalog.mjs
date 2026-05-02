@@ -1,5 +1,8 @@
 /**
- * Synchronise le catalogue Stake (GraphQL categorySlug=slots) dans jeux.json.
+ * Synchronise le catalogue Stake (GraphQL casinoGames) dans jeux.json.
+ * Par défaut : nouveautés (new-releases), page https://stake.com/fr/casino/group/new-releases
+ *   STAKE_CATEGORY_SLUG=slots — tout le catalogue slots
+ *   STAKE_LOCALE=fr|en|…  STAKE_NO_LOCALE=1 — URL sans préfixe de langue
  * Stratégie :
  *   1) fetch() Node (rapide), optionnellement via STAKE_PROXY
  *   2) si échec → Patchright + Chrome puis repli Playwright Chromium ; requêtes GraphQL
@@ -26,6 +29,25 @@ const JEUX_PATH = resolve(ROOT, 'jeux.json');
 
 const STAKE_GQL = 'https://stake.com/_api/graphql';
 const PAGE_SIZE = 50;
+
+let stakeConfigCache;
+function stakeConfig() {
+  if (stakeConfigCache) return stakeConfigCache;
+  const categorySlug = process.env.STAKE_CATEGORY_SLUG?.trim() || 'new-releases';
+  const noLocale =
+    process.env.STAKE_NO_LOCALE === '1' || process.env.STAKE_NO_LOCALE === 'true';
+  const locale = noLocale
+    ? ''
+    : (process.env.STAKE_LOCALE?.trim() ?? 'fr');
+  const groupPath = locale
+    ? `https://stake.com/${locale}/casino/group/${categorySlug}`
+    : `https://stake.com/casino/group/${categorySlug}`;
+  const xLanguage =
+    process.env.STAKE_X_LANGUAGE?.trim() ||
+    (locale === 'fr' ? 'fr' : locale ? locale : 'en');
+  stakeConfigCache = { categorySlug, groupPath, xLanguage };
+  return stakeConfigCache;
+}
 
 // Aligné sur le schéma actuel (voir StakeAPI GraphQLQueries.CASINO_GAMES) : champ image = `thumb`, pas `thumbnailUrl`.
 const QUERY = `
@@ -96,7 +118,7 @@ function getBrowserProxyOption() {
 }
 
 async function waitForCloudflareGate(page, maxMs = 120000) {
-  console.log('Attente éventuelle Cloudflare sur la page slots…');
+  console.log('Attente éventuelle Cloudflare sur la page groupe…');
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     const title = await page.title().catch(() => '');
@@ -129,10 +151,11 @@ function parseArgs() {
 }
 
 async function fetchPageNative(after) {
+  const { categorySlug, groupPath, xLanguage } = stakeConfig();
   const body = {
     query: QUERY,
     variables: {
-      categorySlug: 'slots',
+      categorySlug,
       first: PAGE_SIZE,
       after: after || null,
     },
@@ -145,8 +168,8 @@ async function fetchPageNative(after) {
       'content-type': 'application/json',
       accept: 'application/json',
       'user-agent': platformUserAgent(),
-      'x-language': 'en',
-      referer: 'https://stake.com/casino/group/slots',
+      'x-language': xLanguage,
+      referer: groupPath,
       origin: 'https://stake.com',
     },
     body: JSON.stringify(body),
@@ -193,11 +216,12 @@ async function fetchAllStakeSlotsNative() {
 }
 
 async function fetchPagePlaywrightOnce(page, after) {
+  const { categorySlug, groupPath, xLanguage } = stakeConfig();
   const resp = await page.request.post(STAKE_GQL, {
     data: {
       query: QUERY,
       variables: {
-        categorySlug: 'slots',
+        categorySlug,
         first: PAGE_SIZE,
         after: after || null,
       },
@@ -205,8 +229,8 @@ async function fetchPagePlaywrightOnce(page, after) {
     },
     headers: {
       'content-type': 'application/json',
-      'x-language': 'en',
-      referer: 'https://stake.com/casino/group/slots',
+      'x-language': xLanguage,
+      referer: groupPath,
       origin: 'https://stake.com',
     },
   });
@@ -255,9 +279,10 @@ async function fetchPagePlaywrightWithRetries(page, after, { firstPage }) {
 }
 
 async function stakeBrowserFetchAllSlots(page, label) {
-  console.log(`${label} : navigation stake.com/casino/group/slots …`);
+  const { groupPath } = stakeConfig();
+  console.log(`${label} : navigation ${groupPath} …`);
   try {
-    await page.goto('https://stake.com/casino/group/slots', {
+    await page.goto(groupPath, {
       waitUntil: 'domcontentloaded',
       timeout: 120000,
     });
@@ -292,12 +317,18 @@ async function stakeBrowserFetchAllSlots(page, label) {
   return all;
 }
 
+function playwrightUiLocale() {
+  const { xLanguage } = stakeConfig();
+  return String(xLanguage || '').toLowerCase().startsWith('fr') ? 'fr-FR' : 'en-US';
+}
+
 async function fetchAllStakeSlotsPlaywright() {
   const headful =
     process.env.PLAYWRIGHT_HEADFUL === '1' || process.env.PLAYWRIGHT_HEADFUL === 'true';
   const skipPatch = process.env.SKIP_PATCHRIGHT === '1' || process.env.SKIP_PATCHRIGHT === 'true';
 
   const proxyOpt = getBrowserProxyOption();
+  const uiLocale = playwrightUiLocale();
 
   if (!skipPatch) {
     try {
@@ -306,7 +337,7 @@ async function fetchAllStakeSlotsPlaywright() {
       const context = await chromium.launchPersistentContext(userDataDir, {
         channel: 'chrome',
         headless: !headful,
-        locale: 'en-US',
+        locale: uiLocale,
         timezoneId: 'America/New_York',
         viewport: null,
         ...(proxyOpt ? { proxy: proxyOpt } : {}),
@@ -357,7 +388,7 @@ async function fetchAllStakeSlotsPlaywright() {
     const context = await browser.newContext({
       userAgent: ua,
       viewport: { width: 1366, height: 768 },
-      locale: 'en-US',
+      locale: uiLocale,
       timezoneId: 'America/New_York',
     });
     const page = await context.newPage();
@@ -417,7 +448,10 @@ async function main() {
   }
 
   console.log(`Entrées existantes : ${arr.length} (clés nom|provider : ${existingKeys.size})`);
-  console.log('Récupération Stake (categorySlug=slots)…');
+  const sc = stakeConfig();
+  console.log(
+    `Récupération Stake → categorySlug="${sc.categorySlug}" referer=${sc.groupPath} (x-language=${sc.xLanguage})`
+  );
 
   if (process.env.GITHUB_ACTIONS === 'true' && !stakeProxyUrlRaw()) {
     console.log(

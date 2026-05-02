@@ -1,11 +1,13 @@
 # Synchroniser le catalogue Stake dans `jeux.json`
 
-Le script `sync-stake-catalog.mjs` interroge l’API GraphQL publique de Stake (`categorySlug: "slots"`) et **n’ajoute** que les jeux **absents** du catalogue (déduplication `nom` + `provider` normalisés).
+Le script `sync-stake-catalog.mjs` interroge l’API GraphQL publique de Stake (`casinoGames` avec un `categorySlug`) et **n’ajoute** que les jeux **absents** du catalogue (déduplication `nom` + `provider` normalisés).
+
+**Par défaut** : **nouveautés** — `STAKE_CATEGORY_SLUG` = `new-releases`, page d’appui `https://stake.com/fr/casino/group/new-releases`. Pour tout le catalogue **slots** : `STAKE_CATEGORY_SLUG=slots` (et éventuellement `STAKE_LOCALE=en`, etc.).
 
 ## Comportement du script
 
 1. D’abord, requête **Node** (`fetch`) vers l’API GraphQL de Stake.
-2. En cas d’échec (Cloudflare, 403, etc.), **fallback Playwright** : ouverture de `stake.com/casino/group/slots` dans Chromium, puis requêtes GraphQL via le **même contexte** que le navigateur (cookies / profil proche d’un vrai client).
+2. En cas d’échec (Cloudflare, 403, etc.), **fallback** Patchright / Playwright : ouverture de la page **groupe** (ex. `/fr/casino/group/new-releases`) dans le navigateur, puis requêtes GraphQL via le **même contexte** (cookies).
 
 Variable d’environnement `FORCE_PLAYWRIGHT=1` : **sauter** le `fetch` et n’utiliser que Playwright (utile si seul le navigateur passe le WAF).
 
