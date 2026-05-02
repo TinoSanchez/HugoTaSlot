@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="8" y="8" width="48" height="48" rx="12" fill="#101826" stroke="#365072"/>
+  <path d="M18 40c4-12 24-12 28 0" fill="none" stroke="#00b4ff" stroke-width="4"/>
+  <text x="32" y="30" text-anchor="middle" fill="#f0a500" font-size="12" font-family="Arial" font-weight="700">x2</text>
+  <text x="32" y="57" text-anchor="middle" fill="#f0a500" font-size="8" font-family="Arial">LMB</text>
+</svg>

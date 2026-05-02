@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="core" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#1f2a42"/>
+      <stop offset="100%" stop-color="#0b1020"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd56a"/>
+      <stop offset="55%" stop-color="#f0a500"/>
+      <stop offset="100%" stop-color="#a87200"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="64" cy="64" r="56" fill="url(#ring)" filter="url(#glow)" opacity="0.95"/>
+  <circle cx="64" cy="64" r="47" fill="#3d2c08" opacity="0.5"/>
+  <circle cx="64" cy="64" r="42" fill="url(#core)"/>
+  <circle cx="64" cy="64" r="56" fill="none" stroke="#ffe4a1" stroke-width="2" opacity="0.55"/>
+  <circle cx="64" cy="64" r="42" fill="none" stroke="#f7c74a" stroke-width="1.5" opacity="0.4"/>
+
+  <text x="64" y="74" text-anchor="middle" font-family="Rajdhani, Arial, sans-serif" font-size="34" font-weight="700" fill="#f6d27b" letter-spacing="1">VT</text>
+</svg>

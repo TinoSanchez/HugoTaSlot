@@ -1,0 +1,63 @@
+# ─── Dependencies ───
+node_modules/
+.pnp/
+.pnp.js
+.yarn/
+
+# ─── Build outputs ───
+web/dist/
+dist/
+build/
+.next/
+out/
+.cache/
+
+# ─── Environnements ───
+.env
+.env.local
+.env.*.local
+*.env
+
+# ─── Vercel ───
+.vercel
+
+# ─── Logs ───
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── Editor / OS ───
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ─── Playwright / Puppeteer ───
+.playwright-*/
+playwright-report/
+test-results/
+
+# ─── Tesseract OCR ───
+*.traineddata
+
+# ─── Tools / debug captures (à régénérer si besoin) ───
+tmp_*.html
+tmp_*.js
+tmp_*.js.map
+ocr-cache.json
+gamdom_casino_api_capture.json
+
+# ─── Supabase generated types ───
+web/src/lib/database.types.ts
+
+# ─── Coverage / tests ───
+coverage/
+.nyc_output/
+
+# ─── Divers ───
+*.tsbuildinfo
+.turbo/

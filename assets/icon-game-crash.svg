@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="8" y="8" width="48" height="48" rx="12" fill="#101826" stroke="#365172"/>
+  <path d="M18 42l10-10 7 5 11-14" fill="none" stroke="#00e676" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="46" cy="23" r="3" fill="#00e676"/>
+  <text x="32" y="57" text-anchor="middle" fill="#f0a500" font-size="8" font-family="Arial">CRH</text>
+</svg>

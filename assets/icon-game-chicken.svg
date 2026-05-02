@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="8" y="8" width="48" height="48" rx="12" fill="#0f1827" stroke="#355172"/>
+  <ellipse cx="32" cy="34" rx="12" ry="10" fill="#f5f7fb"/>
+  <circle cx="36" cy="28" r="6" fill="#f5f7fb"/>
+  <circle cx="38" cy="27" r="1.5" fill="#121a2a"/>
+  <polygon points="42,29 48,31 42,33" fill="#f0a500"/>
+  <text x="32" y="57" text-anchor="middle" fill="#f0a500" font-size="8" font-family="Arial">CHK</text>
+</svg>

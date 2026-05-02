@@ -1,0 +1,30 @@
+{
+  "name": "site-bh-1.02",
+  "version": "1.0.0",
+  "description": "Une application web complète de gestion de Bonus Hunt avec interface moderne et tous les outils nécessaires.",
+  "main": "accounts.js",
+  "scripts": {
+    "start": "node serve.js",
+    "test": "echo \"No tests configured\"",
+    "dev": "vite web",
+    "build": "node scripts/build-original-site.mjs",
+    "preview": "vite preview web",
+    "deploy:vercel": "npm run build && vercel --prod --yes",
+    "sync:stake": "node scripts/sync-stake-catalog.mjs",
+    "vercel:login": "vercel login",
+    "supabase:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public > web/src/lib/database.types.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "playwright": "^1.59.1",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^50.41.0",
+    "vite": "^7.1.0"
+  }
+}

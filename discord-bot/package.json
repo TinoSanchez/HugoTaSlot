@@ -1,0 +1,27 @@
+{
+  "name": "hugotaslot-discord-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord HugoTaSlot : annonces YouTube + sorties slots, lié au site et à Supabase.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "register": "node src/discord/register-commands.js",
+    "lint": "node --check src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "fast-xml-parser": "^4.5.0",
+    "node-cron": "^3.0.3",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "undici": "^6.20.1"
+  }
+}

@@ -1,0 +1,20 @@
+---
+description: Déployer sur Vercel après les changements du site statique
+alwaysApply: true
+---
+
+# Déploiement Vercel (obligatoire)
+
+Pour ce dépôt **site BH / hugotaslot-cloud** :
+
+1. **Après toute modification** qui impacte le site en production (`index.html`, `assets/`, `styles.css`, `vercel.json`, `app.js`, `scripts/build-original-site.mjs`, fichiers copiés par le build, etc.), exécuter **toi-même** le déploiement en fin de tâche, sans attendre que l’utilisateur le demande.
+
+2. Commande (PowerShell, depuis la racine du projet) :
+   ```powershell
+   Set-Location "C:\Users\mathi\Desktop\site BH 1.02"; npm run deploy:vercel
+   ```
+   Adapter le chemin si le workspace est ailleurs : `Set-Location` vers la racine où se trouve `package.json`.
+
+3. **Ne pas** déployer si la session n’a touché **que** de la doc SQL isolée, du README, ou des fichiers sans effet sur `web/dist` — dans tous les autres cas de code/UI du site, **déployer**.
+
+4. Si le déploiement échoue (token, réseau), diagnostiquer et réessayer une fois ; indiquer clairement l’erreur à l’utilisateur.
