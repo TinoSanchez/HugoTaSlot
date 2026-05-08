@@ -1,0 +1,52 @@
+# Synchronise automatiquement jeux.json (npm run sync:recent-slots) une fois par jour.
+# Nécessite que le dépôt soit sur GitHub ; un push ne se fait que si le fichier change.
+# Si Vercel est branché sur ce repo, le déploiement suit le push automatiquement.
+
+name: Sync jeux.json (quotidien)
+
+on:
+  schedule:
+    # ~06h30 Paris (hiver UTC+1) — UTC sans heure d’été du lieu GitHub
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-jeux-json-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Compléter jeux.json (récentes + sources du script)
+        run: npm run sync:recent-slots
+
+      - name: Enrichir vignettes (doublons + Hub88)
+        run: npm run enrich:images
+        env:
+          HUB88_PROBE_MAX: '400'
+
+      - name: Commit et push si jeux.json a changé
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- jeux.json; then
+            echo "jeux.json inchangé — aucun commit."
+            exit 0
+          fi
+          git add jeux.json
+          git commit -m "chore(catalog): sync jeux.json (automated daily)"
+          git push

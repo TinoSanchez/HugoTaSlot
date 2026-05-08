@@ -17,6 +17,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { enrichCatalogImages } from './lib/enrich-slot-images.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -220,6 +221,25 @@ async function fetchSlotReportRecentRows(maxAgeDays) {
   }
 }
 
+function gamdomSlugPart(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[''`´]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+}
+
+/** URL SEO Gamdom alignée sur le site (index.html) — meilleure résolution que la seule recherche. */
+function gamdomSeoUrlForSlot(nom, provider) {
+  const a = gamdomSlugPart(nom);
+  const b = gamdomSlugPart(provider);
+  if (!a || !b) return `https://gamdom.com/slots/search?q=${encodeURIComponent(nom)}`;
+  return `https://gamdom.com/fr-fr/casino/${a}-${b}`;
+}
+
 function slotReportRowToJeux(s, idx) {
   const providerSlug = String(s.provider_slug || 'unknown')
     .toLowerCase()
@@ -240,7 +260,9 @@ function slotReportRowToJeux(s, idx) {
     provider: providerName || '—',
     rtp,
     image: generatedThumb,
-    gamdomUrl: `https://gamdom.com/slots/search?q=${encodeURIComponent(slotName)}`,
+    srSlug: String(s.slug || '').trim(),
+    srProviderSlug: String(s.provider_slug || '').trim().toLowerCase(),
+    gamdomUrl: gamdomSeoUrlForSlot(slotName, providerName),
     devise: { active: 'USD', symbole: '$' },
   };
 }
@@ -413,6 +435,18 @@ async function main() {
   }
 
   const merged = arr.concat(toAdd);
+  const hubMax = Math.min(
+    2000,
+    Math.max(0, parseInt(process.env.HUB88_PROBE_MAX || '120', 10) || 120)
+  );
+  const skipHub = process.env.SKIP_HUB88 === '1' || process.env.SKIP_HUB88 === 'true';
+  try {
+    const imgStats = await enrichCatalogImages(merged, { hubMax, skipHub });
+    console.log('Enrichissement vignettes :', imgStats);
+  } catch (e) {
+    console.warn('Enrichissement vignettes partiel :', e.message || e);
+  }
+
   writeFileSync(JEUX_PATH, JSON.stringify(merged), 'utf8');
   console.log(`OK : jeux.json mis à jour → ${merged.length} entrées (+${toAdd.length}).`);
 }
