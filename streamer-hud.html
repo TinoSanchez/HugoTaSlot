@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>HugoTaSlot · Stream HUD</title>
+<link rel="icon" href="./assets/icon-hunt.svg" type="image/svg+xml">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700;800&family=Share+Tech+Mono&display=swap');
+  :root {
+    --gold: #7F5A83;
+    --green: #6FCF97;
+    --red: #E07A8C;
+    --cyan: #7FB7C7;
+    --bg-dark: #020202;
+    --bg-mid: #0A0A0C;
+    --border: rgba(127, 90, 131, 0.35);
+    --text: #EDEEF2;
+    --text-muted: #9DA2AB;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    background: radial-gradient(ellipse at top, #131316 0%, var(--bg-dark) 65%);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+  }
+  body {
+    padding: 12px;
+    cursor: default;
+  }
+  .sh-wrap {
+    background: rgba(8, 8, 10, 0.96);
+    border: 1px solid rgba(127, 90, 131, 0.55);
+    border-radius: 14px;
+    padding: 14px 16px 16px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .sh-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sh-title span {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+  .sh-close {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-mid);
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .sh-close:hover { border-color: var(--red); color: var(--red); }
+  .sh-hunt {
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: 0.06em;
+    color: var(--gold);
+    margin-bottom: 8px;
+    line-height: 1.15;
+    word-break: break-word;
+  }
+  .sh-line {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .sh-bar-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    margin-top: 8px;
+  }
+  .sh-bar-label:first-of-type { margin-top: 0; }
+  .sh-progress-track {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--bg-mid);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .sh-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--gold) 0%, var(--green) 100%);
+    transition: width 0.28s ease;
+    border-radius: 999px;
+  }
+  .sh-progress-fill.sh-fill-be {
+    background: linear-gradient(90deg, rgba(127, 183, 199, 0.95) 0%, var(--cyan) 100%);
+  }
+  .sh-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-top: 10px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .sh-row span:first-child {
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .sh-row span:last-child {
+    font-size: 15px;
+    font-weight: 700;
+    text-align: right;
+  }
+  .sh-gold { color: var(--gold); }
+  .sh-green { color: var(--green); }
+  .sh-red { color: var(--red); }
+  .sh-empty {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 24px 8px;
+  }
+</style>
+</head>
+<body>
+  <div class="sh-wrap" id="sh-root">
+    <div class="sh-title">
+      <span>Stream HUD · HugoTaSlot</span>
+      <button type="button" class="sh-close" id="sh-close" title="Fermer la fenêtre">✕</button>
+    </div>
+    <div id="sh-content"></div>
+  </div>
+<script>
+'use strict';
+(function () {
+  const STORAGE_KEY = 'huntmaster_v2';
+  const CHANNEL_NAME = 'hm-bh-sync';
+  const STREAMER_OVERLAY_KEY = 'hm_opener_streamer_overlay_v1';
+
+  let hunts = [];
+  let activeHuntId = null;
+
+  function loadFromStorage() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) { hunts = []; activeHuntId = null; return; }
+      const parsed = JSON.parse(raw);
+      hunts = Array.isArray(parsed.hunts) ? parsed.hunts : [];
+      activeHuntId = parsed.activeHuntId || null;
+    } catch (e) {
+      console.warn('streamer-hud load', e);
+      hunts = [];
+    }
+  }
+
+  function activeHunt() {
+    if (!activeHuntId) return null;
+    return hunts.find((h) => h && h.id === activeHuntId) || null;
+  }
+
+  function beAverageMultiplierForHunt(hunt) {
+    if (!hunt || !Array.isArray(hunt.bonuses) || !hunt.bonuses.length) return 0;
+    const sb = Number(hunt.startBalance || 0);
+    const totalStake = hunt.bonuses.reduce((s, b) => s + Number(b.stake || 0), 0);
+    if (sb <= 0 || totalStake <= 0) return 0;
+    return sb / totalStake;
+  }
+
+  function fmtEuro(n) {
+    return `${Number(n || 0).toFixed(2).replace('.', ',')}€`;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function render() {
+    loadFromStorage();
+    const root = document.getElementById('sh-content');
+    if (!root) return;
+    const hunt = activeHunt();
+    if (!hunt || !Array.isArray(hunt.bonuses) || !hunt.bonuses.length) {
+      root.innerHTML = '<div class="sh-empty">Aucun hunt actif sur cette page.<br>Ouvre un hunt sur le site puis relance.</div>';
+      return;
+    }
+
+    const total = hunt.bonuses.length;
+    const completed = hunt.bonuses.filter((b) => b && b.win !== null).length;
+    const totalStake = hunt.bonuses.reduce((s, b) => s + Number((b && b.stake) || 0), 0);
+    const startBalance = Number(hunt.startBalance || 0);
+    const currentWin = hunt.bonuses
+      .filter((b) => b && b.win !== null)
+      .reduce((s, b) => s + Number(b.win || 0), 0);
+    const beMoyen = beAverageMultiplierForHunt(hunt);
+    const remain = Math.max(0, startBalance - currentWin);
+    const openedStake = hunt.bonuses
+      .filter((b) => b && b.win !== null && !isNaN(Number(b.win)))
+      .reduce((s, b) => s + Number(b.stake || 0), 0);
+    const remainStake = Math.max(0, totalStake - openedStake);
+
+    let beEvoTxt = '—';
+    let evoClass = '';
+    if (remain <= 0.0001) {
+      beEvoTxt = 'ATTEINT';
+      evoClass = 'sh-green';
+    } else if (remainStake > 0) {
+      const rm = remain / remainStake;
+      beEvoTxt = `${rm.toFixed(4).replace('.', ',')}×`;
+      const baseAvg = totalStake > 0 ? startBalance / totalStake : Infinity;
+      evoClass = rm <= baseAvg ? 'sh-gold' : 'sh-red';
+    } else {
+      beEvoTxt = '∞×';
+      evoClass = 'sh-red';
+    }
+
+    const pctOpening = total > 0 ? (completed / total) * 100 : 0;
+    const progBePct = startBalance > 0 ? Math.min(100, (currentWin / startBalance) * 100) : 0;
+
+    root.innerHTML = `
+      <div class="sh-hunt">${escapeHtml(hunt.name || 'Hunt')}</div>
+      <div class="sh-line">${total} bonus · Avancement ${completed}/${total}</div>
+      <div class="sh-bar-label">Avancement bonus</div>
+      <div class="sh-progress-track"><div class="sh-progress-fill" style="width:${pctOpening}%"></div></div>
+      <div class="sh-bar-label">Progression gains / solde départ</div>
+      <div class="sh-progress-track"><div class="sh-progress-fill sh-fill-be" style="width:${progBePct}%"></div></div>
+      <div class="sh-row"><span>Solde départ</span><span>${escapeHtml(fmtEuro(startBalance))}</span></div>
+      <div class="sh-row"><span>BE moyen</span><span class="sh-gold">${beMoyen > 0 ? escapeHtml(beMoyen.toFixed(4).replace('.', ',') + '×') : '—'}</span></div>
+      <div class="sh-row"><span>BE évolutif</span><span class="${evoClass}">${escapeHtml(beEvoTxt)}</span></div>
+    `;
+  }
+
+  function refresh() {
+    render();
+  }
+
+  try {
+    const bc = new BroadcastChannel(CHANNEL_NAME);
+    bc.onmessage = (ev) => {
+      const d = ev && ev.data;
+      if (!d || d.source === 'streamer-hud') return;
+      refresh();
+    };
+  } catch (_) {}
+
+  window.addEventListener('storage', (ev) => {
+    if (ev.key === STORAGE_KEY || ev.key === STREAMER_OVERLAY_KEY) refresh();
+  });
+
+  document.getElementById('sh-close').addEventListener('click', () => {
+    try {
+      localStorage.setItem(STREAMER_OVERLAY_KEY, '0');
+    } catch (_) {}
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.close();
+        return;
+      }
+    } catch (_) {}
+    try { window.close(); } catch (_) {}
+  });
+
+  render();
+  setInterval(refresh, 1200);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "HugoTaSlot — Bonus Hunt Manager",
+  "short_name": "HugoTaSlot",
+  "description": "Bonus Hunt Manager : sessions, catalogue slots, stats, tournois et outils streamer.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "fr",
+  "dir": "ltr",
+  "background_color": "#020202",
+  "theme_color": "#020202",
+  "icons": [
+    {
+      "src": "/assets/logo-hugotaslot.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/logo-hugotaslot.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ]
+}

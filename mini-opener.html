@@ -241,6 +241,12 @@
     font-family: 'Share Tech Mono', monospace; font-size: 10px;
     color: var(--text-dim); font-weight: 700;
   }
+  .mo-list-thumb {
+    width: 22px; height: 22px; flex: 0 0 22px;
+    border-radius: 5px; overflow: hidden; background: var(--bg-mid);
+    border: 1px solid var(--border);
+  }
+  .mo-list-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .mo-list-item.active .mo-list-num { background: var(--gold); color: #ffffff; }
   .mo-list-item.done .mo-list-num { background: rgba(111,207,151,0.18); color: var(--green); }
   .mo-list-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -269,6 +275,9 @@
   const STORAGE_KEY = 'huntmaster_v2';
   const CHANNEL_NAME = 'hm-bh-sync';
   const TOAST_TIMER = { id: null };
+  /** Catalogue slots (jeux.json), même source que le site — indispensable pour les vignettes si slot_image vide. */
+  let catalogSlots = [];
+  let catalogLoadPromise = null;
 
   const CASINO_CONFIG = {
     gamdom: { label: 'Gamdom', searchUrl: (q) => `https://gamdom.com/casino?tab=slots&search=${encodeURIComponent(q || '')}` },
@@ -299,6 +308,12 @@
   }
   function isGamdomDirectGameUrl(u) {
     return isGamdomLegacyGamesUrl(u) || isGamdomSeoCasinoUrl(u);
+  }
+  function isStakeDirectGameUrl(u) {
+    return /^https?:\/\/(?:[\w-]+\.)?stake\.com\/casino\/games\/.+/i.test(String(u || '').trim());
+  }
+  function isDirectGamePlayUrl(u) {
+    return isGamdomDirectGameUrl(u) || isStakeDirectGameUrl(u);
   }
   function isGamdomNonDirectStoredUrl(u) {
     const s = String(u || '').trim().toLowerCase();
@@ -344,10 +359,10 @@
       if (casino !== 'gamdom' || !isGamdomNonDirectStoredUrl(customRaw)) return customRaw;
     }
     if (casino === 'gamdom') {
-      const seoOnly = gamdomSeoCasinoUrlFromNameProvider(bonus && (bonus.slotName || bonus.slot_name), bonus && (bonus.slotProvider || bonus.provider));
+      const seoOnly = gamdomSeoCasinoUrlFromNameProvider(bonusSlotName(bonus), bonusSlotProvider(bonus));
       if (seoOnly) return seoOnly;
     }
-    return buildCasinoSlotUrl(hunt && hunt.casino, (bonus && bonus.slotName) || '');
+    return buildCasinoSlotUrl(hunt && hunt.casino, bonusSlotName(bonus));
   }
 
   function getCurrencySymbol(code) {
@@ -367,10 +382,131 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+  /** Aligné sur index.html : http(s), chemins relatifs, data:image sécurisés. */
   function isSafeUrl(u) {
-    const s = String(u || '').trim();
+    if (!u) return false;
+    const s = String(u).trim();
     if (!s) return false;
-    return /^(https?:|data:image\/)/i.test(s);
+    if (/^https?:\/\//i.test(s)) return true;
+    if (s.startsWith('/') || s.startsWith('./') || s.startsWith('../')) return true;
+    if (/^data:image\/(png|jpe?g|gif|webp|svg\+xml);/i.test(s)) return true;
+    return false;
+  }
+  function normalizeSlotImageUrl(raw) {
+    let s = String(raw || '').trim();
+    if (!s) return '';
+    s = s.replace(/\\/g, '/');
+    if (s.startsWith('//')) s = `https:${s}`;
+    else if (!/^(https?:\/\/|data:image\/|\/|\.\/|\.\.\/)/i.test(s) && /^[a-z0-9.-]+\.[a-z]{2,}/i.test(s)) s = `https://${s}`;
+    return s;
+  }
+  function normalizeBonusCompareName(s) {
+    try {
+      return String(s || '')
+        .replace(/[\u2018\u2019\u02BC\uFF07]/g, "'")
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    } catch {
+      return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+  }
+  function normalizeThumbForMatch(u) {
+    try {
+      const s = String(u || '').trim().toLowerCase();
+      if (!s) return '';
+      const noQ = s.split('?')[0].split('#')[0];
+      return noQ.replace(/\/$/, '');
+    } catch {
+      return '';
+    }
+  }
+  function pickBestCatalogMatchMini(candidates) {
+    if (!candidates || !candidates.length) return null;
+    const withImg = candidates.filter((s) => String(s.image || s.img || s.thumbnail || '').trim());
+    const pool = withImg.length ? withImg : candidates;
+    const withDirect = pool.filter((s) => isDirectGamePlayUrl(s?.gamdomUrl || s?.gamdom_url));
+    return (withDirect.length ? withDirect : pool)[0];
+  }
+  function findCatalogSlotForBonusMini(bonus) {
+    if (!bonus || !Array.isArray(catalogSlots) || !catalogSlots.length) return null;
+    const sid = String(bonus.slotId || bonus.slot_id || '').trim();
+    if (sid) {
+      const byId = catalogSlots.find((s) => String(s.id || s.Id || '') === sid);
+      if (byId) return byId;
+      if (!sid.startsWith('gd_')) {
+        const prefixed = catalogSlots.find((s) => String(s.id || s.Id || '') === `gd_${sid}`);
+        if (prefixed) return prefixed;
+      }
+    }
+    const nameNorm = normalizeBonusCompareName(bonus.slotName || bonus.slot_name || '');
+    const provNorm = normalizeBonusCompareName(bonus.slotProvider || bonus.provider || '');
+    const thumbNorm = normalizeThumbForMatch(bonus.slotImage || bonus.slot_image || '');
+    if (nameNorm) {
+      const nameHits = catalogSlots.filter((s) => normalizeBonusCompareName(s.nom || s.name || s.title || s.Name || '') === nameNorm);
+      if (nameHits.length) {
+        const provHits = provNorm
+          ? nameHits.filter((s) => {
+              const p = normalizeBonusCompareName(s.provider || s.Provider || '');
+              return !p || p === provNorm;
+            })
+          : nameHits;
+        const pool = provHits.length ? provHits : nameHits;
+        const picked = pickBestCatalogMatchMini(pool);
+        if (picked) return picked;
+      }
+    }
+    if (thumbNorm) {
+      for (let i = 0; i < catalogSlots.length; i++) {
+        const s = catalogSlots[i];
+        const sim = normalizeThumbForMatch(s.image || s.img || s.thumbnail || '');
+        if (sim && sim === thumbNorm) return s;
+      }
+    }
+    return null;
+  }
+  function loadCatalogSlots() {
+    if (catalogLoadPromise) return catalogLoadPromise;
+    catalogLoadPromise = (async () => {
+      const paths = ['jeux.json', './jeux.json', '/jeux.json'];
+      for (const p of paths) {
+        try {
+          const r = await fetch(p, { cache: 'force-cache' });
+          if (!r.ok) continue;
+          const data = await r.json();
+          const arr = Array.isArray(data) ? data : (data.slots || data.games || []);
+          if (arr && arr.length) {
+            catalogSlots = arr;
+            return catalogSlots.length;
+          }
+        } catch (e) {
+          console.warn('mini-opener jeux.json', p, e);
+        }
+      }
+      return 0;
+    })();
+    return catalogLoadPromise;
+  }
+  /** URL vignette : bonus puis entrée jeux.json (comme index.html / resolveBonusImageUrl). */
+  function resolveBonusImageUrlMini(bonus) {
+    const direct = normalizeSlotImageUrl(
+      bonus && (bonus.slotImage || bonus.slot_image || bonus.image || '')
+    );
+    if (direct && isSafeUrl(direct)) return direct;
+    const cat = findCatalogSlotForBonusMini(bonus);
+    if (cat) {
+      const fromCat = normalizeSlotImageUrl(cat.image || cat.img || cat.thumbnail || '');
+      if (fromCat && isSafeUrl(fromCat)) return fromCat;
+    }
+    return '';
+  }
+  function bonusSlotName(b) {
+    return (b && (b.slotName || b.slot_name)) || '';
+  }
+  function bonusSlotProvider(b) {
+    return (b && (b.slotProvider || b.provider)) || '';
   }
   function normalizeBonusType(t) {
     const v = String(t || '').toLowerCase();
@@ -515,8 +651,9 @@
     const profitCls = profit >= 0 ? 'green' : 'red';
     const profitTxt = (profit >= 0 ? '+' : '') + fmtMoney(profit, hunt.currency);
 
-    const safeImg = isSafeUrl(bonus && bonus.slotImage) ? escapeHtml(bonus.slotImage) : '';
-    const kind = normalizeBonusType(bonus && bonus.bonusType);
+    const imgResolved = resolveBonusImageUrlMini(bonus);
+    const safeImg = imgResolved ? escapeHtml(imgResolved) : '';
+    const kind = normalizeBonusType(bonus && (bonus.bonusType || bonus.bonus_type));
 
     const goUrl = getBonusGoToUrl(hunt, bonus);
     const canGo = !!goUrl;
@@ -534,12 +671,12 @@
         <div class="mo-bonus-head">
           <div class="mo-img-frame">
             ${safeImg
-              ? `<img src="${safeImg}" alt="${escapeHtml(bonus.slotName || '')}" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'mo-img-placeholder\\'>♠</div>'">`
+              ? `<img src="${safeImg}" alt="${escapeHtml(bonusSlotName(bonus))}" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=\\'mo-img-placeholder\\'>♠</div>'">`
               : `<div class="mo-img-placeholder">♠</div>`}
           </div>
           <div class="mo-bonus-info">
-            <div class="mo-bonus-name">${escapeHtml(bonus.slotName || 'Slot')}</div>
-            <div class="mo-bonus-prov">${escapeHtml(bonus.slotProvider || '—')}</div>
+            <div class="mo-bonus-name">${escapeHtml(bonusSlotName(bonus) || 'Slot')}</div>
+            <div class="mo-bonus-prov">${escapeHtml(bonusSlotProvider(bonus) || '—')}</div>
             <div class="mo-bonus-stake">MISE : ${escapeHtml(fmtMoney(bonus.stake, hunt.currency))}</div>
             <div class="mo-bonus-kind ${kind}">${formatBonusKind(kind)}</div>
           </div>
@@ -548,8 +685,8 @@
         <div class="mo-stats">
           <div class="mo-stat"><span class="mo-stat-label">Gains</span><span class="mo-stat-val cyan">${escapeHtml(fmtMoney(currentWin, hunt.currency))}</span></div>
           <div class="mo-stat"><span class="mo-stat-label">Profit</span><span class="mo-stat-val ${profitCls}">${escapeHtml(profitTxt)}</span></div>
-          <div class="mo-stat"><span class="mo-stat-label">BE attendu</span><span class="mo-stat-val gold">${beMult > 0 ? beMult.toFixed(2).replace('.', ',') + '×' : '—'}</span></div>
-          <div class="mo-stat"><span class="mo-stat-label">BE restant</span><span class="mo-stat-val ${beRemainCls}">${escapeHtml(beRemainTxt)}</span></div>
+          <div class="mo-stat"><span class="mo-stat-label">BE moyen</span><span class="mo-stat-val gold">${beMult > 0 ? beMult.toFixed(2).replace('.', ',') + '×' : '—'}</span></div>
+          <div class="mo-stat"><span class="mo-stat-label">BE évolutif</span><span class="mo-stat-val ${beRemainCls}">${escapeHtml(beRemainTxt)}</span></div>
         </div>
 
         <div class="mo-input-block" style="margin-top:12px">
@@ -577,7 +714,11 @@
             const cls = (i === state.bonusIndex ? 'active ' : '') + (has ? 'done' : '');
             return `<div class="mo-list-item ${cls}" data-idx="${i}">
                 <div class="mo-list-num">${i + 1}</div>
-                <div class="mo-list-name">${escapeHtml(b && b.slotName ? b.slotName : 'Slot')}</div>
+                <div class="mo-list-thumb">${(() => {
+                  const u = resolveBonusImageUrlMini(b);
+                  return u ? `<img src="${escapeHtml(u)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : '';
+                })()}</div>
+                <div class="mo-list-name">${escapeHtml(bonusSlotName(b) || 'Slot')}</div>
                 <div class="mo-list-win ${has ? 'has-win' : ''}">${has ? escapeHtml(fmtMoney(b.win, hunt.currency)) : '—'}</div>
               </div>`;
           }).join('')}
@@ -715,6 +856,14 @@
     setStatus('SYNC ON');
     render();
     setupSync();
+    loadCatalogSlots()
+      .then((n) => {
+        if (n > 0) {
+          setStatus('SYNC ON');
+          render();
+        }
+      })
+      .catch(() => {});
   }
 
   if (document.readyState === 'loading') {
