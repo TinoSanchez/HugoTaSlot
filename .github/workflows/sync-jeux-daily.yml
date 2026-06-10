@@ -1,14 +1,21 @@
-# Synchronise automatiquement jeux.json (npm run sync:recent-slots) une fois par jour.
-# Nécessite que le dépôt soit sur GitHub ; un push ne se fait que si le fichier change.
-# Si Vercel est branché sur ce repo, le déploiement suit le push automatiquement.
+# Synchronise jeux.json (slot.report récentes) + enrichissement vignettes, puis commit si changement.
+# Déclenchement manuel : option « enrichissement complet » (plus long, ~30–90 min).
+# Cron : toutes les 3 h pour que les utilisateurs voient les nouvelles sorties rapidement
+# (le commit auto-déclenche un re-deploy Vercel via l'intégration Git).
 
-name: Sync jeux.json (quotidien)
+name: Sync jeux.json (récurrent)
 
 on:
   schedule:
-    # ~06h30 Paris (hiver UTC+1) — UTC sans heure d’été du lieu GitHub
-    - cron: '30 5 * * *'
+    # Toutes les 3 h (00:30, 03:30, 06:30, 09:30, 12:30, 15:30, 18:30, 21:30 UTC)
+    - cron: '30 */3 * * *'
   workflow_dispatch:
+    inputs:
+      full_enrich:
+        description: 'Enrichissement complet (tous placeholders sr_*, API Gamdom)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: sync-jeux-json-${{ github.ref }}
@@ -20,6 +27,7 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -31,13 +39,35 @@ jobs:
       - name: Installer les dépendances
         run: npm ci
 
-      - name: Compléter jeux.json (récentes + sources du script)
-        run: npm run sync:recent-slots
+      - name: Tests smoke
+        run: npm test
+        env:
+          CATALOG_MAX_PLACEHOLDERS: '500'
 
-      - name: Enrichir vignettes (doublons + Hub88)
+      - name: Stats catalogue (avant)
+        run: node scripts/ci-catalog-stats.mjs --markdown >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compléter jeux.json (récentes)
+        run: npm run sync:recent-slots
+        env:
+          HUB88_PROBE_MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.full_enrich && '200' || '80' }}
+
+      - name: Enrichir vignettes (loose, fuzzy, Gamdom HTML, Hub88)
         run: npm run enrich:images
         env:
-          HUB88_PROBE_MAX: '400'
+          GAMDOM_OG_MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.full_enrich && '0' || '400' }}
+          HUB88_PROBE_MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.full_enrich && '0' || '2500' }}
+
+      - name: Enrichir via API Gamdom (catalogue complet)
+        if: github.event_name == 'workflow_dispatch' && inputs.full_enrich
+        run: npm run enrich:gamdom-api
+        timeout-minutes: 45
+
+      - name: Purger les orphelins (sr_* sans vignette)
+        run: npm run catalog:prune-orphans
+
+      - name: Stats catalogue (après)
+        run: node scripts/ci-catalog-stats.mjs --markdown >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit et push si jeux.json a changé
         run: |
@@ -48,5 +78,5 @@ jobs:
             exit 0
           fi
           git add jeux.json
-          git commit -m "chore(catalog): sync jeux.json (automated daily)"
+          git commit -m "chore(catalog): sync et enrichissement jeux.json (automated)"
           git push

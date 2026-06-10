@@ -5,7 +5,8 @@ Bot Discord en relation avec le site (Supabase) pour :
 - 🎬 **Annoncer chaque nouvelle vidéo YouTube** de la chaîne HugoTaSlot
 - 🎰 **Annoncer les nouvelles sorties de slot** (auto via [SlotCatalog](https://slotcatalog.com) : même jeux neufs qu’on retrouve sur Stake, Gamdom, Shuffle, Celsius, etc. + [BigWinBoard](https://bigwinboard.com) si le flux est accessible + ajouts manuels admin)
 - 🔗 **Lier les comptes Discord ↔ HugoTaSlot** (commande `/link CODE`)
-- 📊 **Slash commands** : `/lastvideo`, `/lastslot`, `/hunts`, `/leaderboard`, `/link`, `/unlink`
+- 📊 **Slash commands** : `/lastvideo`, `/lastslot`, `/slot`, `/call`, `/hunts`, `/leaderboard`, `/link`, `/unlink`
+  - **`/call`** : option **`machine`** (autocomplete sur le catalogue `jeux.json`) ; sans option = slot au hasard comme `/slot`.
 
 Tourne **H24** sur Railway (free tier suffit). Stockage Supabase, donc accessible aussi par le site.
 
@@ -86,7 +87,7 @@ Variables utiles :
 ```env
 CASINO_SOURCES=slotcatalog    # recommandé ; laisser une seule source
 CRON_CASINO=*/30 * * * *
-SITE_URL=https://ton-site.vercel.app   # pour télécharger jeux.json en dédup
+SITE_URL=https://hugotaslot.fr   # prod ; pour télécharger jeux.json en dédup
 ```
 
 Les fetchers directs `stake` / `gamdom` / `shuffle` / `celsius` existent encore dans le code mais sont **souvent inutilisables** sans proxy payant ; garde `slotcatalog`.
@@ -112,7 +113,7 @@ Les fetchers directs `stake` / `gamdom` / `shuffle` / `celsius` existent encore 
    railway run npm run register
    ```
 
-**Healthcheck** : le bot expose `GET /healthz` sur `PORT` (auto-fourni par Railway). C'est déjà câblé dans `railway.toml`.
+**Healthcheck Railway** : désactivé dans `railway.json` (`"healthcheckPath": null`). Un bot Discord n’a pas besoin d’HTTP pour recevoir du trafic — le healthcheck sur `PORT` échoue souvent (faux 503) alors que le processus est sain. Le serveur **HTTP** sur `0.0.0.0:$PORT` reste dispo pour debug manuel (`GET /` ou `/healthz`). Vérifie surtout que la variable **`PORT` n’est pas vide** sur le service (sinon on retombe sur 3000 côté code).
 
 ## 9. Workflow de liaison `/link`
 
@@ -172,7 +173,7 @@ discord-bot/
 │       └── casino-watcher.js ← SlotCatalog → slot_releases
 ├── sql/                      ← schémas Supabase
 ├── package.json
-├── railway.toml
+├── railway.json
 ├── Procfile                  ← fallback pour autres PaaS
 └── .env.example
 ```

@@ -1,0 +1,173 @@
+# Architecture du dépôt — HugoTaSlot
+
+Ce document fixe **quelle partie du repo est en production** et comment éviter de modifier le mauvais dossier.
+
+## Site en production (source de vérité)
+
+**URL :** [https://hugotaslot.fr](https://hugotaslot.fr) (Vercel, projet `hugotaslot-cloud`)
+
+| Rôle | Fichiers à la **racine** du repo |
+|------|----------------------------------|
+| Structure HTML | `index.html` |
+| Styles | `styles.css` |
+| Logique applicative | `app.js` |
+| Catalogue slots | `jeux.json` (+ secours `jeux-embed.js`, chargé à la demande) |
+| Assets statiques | `assets/` |
+| Pages annexes | `mini-opener.html`, `streamer-hud.html` |
+
+**Build déploiement :**
+
+```bash
+npm run build          # copie tout vers web/dist/
+npm run deploy:vercel  # build + vercel --prod
+```
+
+Le dossier **`web/dist/`** est un **artefact de build** : ne pas l’éditer à la main. Toute modification UI/fonctionnelle du site public se fait à la racine (`index.html`, `styles.css`, `app.js`).
+
+**Dev local (site complet) :**
+
+```bash
+npm start
+# → http://localhost:8765  (serve.js sert la racine du repo)
+```
+
+**Découpage CSS/JS :** si du code a été réintégré dans `index.html`, régénérer les fichiers externes avec :
+
+```bash
+npm run split:index
+```
+
+---
+
+## Dossier `web/` — prototype Vite (hors production)
+
+| Élément | Détail |
+|---------|--------|
+| Stack | Vite + `web/src/main.js` |
+| Portée | Auth Supabase + hunts simplifiés (~700 lignes), **pas** la feature set du site principal |
+| Déploiement | **Non** utilisé par Vercel pour hugotaslot.fr |
+| Commandes | `npm run dev` (Vite), `npm run preview` |
+
+**Statut :** brouillon / réserve pour une éventuelle réécriture modulaire.  
+**Ne pas confondre** avec le site live : les changements dans `web/src/` **n’apparaissent pas** sur hugotaslot.fr tant qu’ils ne sont pas portés vers `app.js` + `index.html`.
+
+Variables d’environnement : `web/.env.example` (`VITE_SUPABASE_*`) — utiles uniquement pour ce prototype.
+
+---
+
+## Autres dossiers utiles
+
+| Dossier | Rôle |
+|---------|------|
+| `scripts/` | Build (`build-original-site.mjs`), sync catalogue (`sync-recent-slots-to-jeux.mjs`), enrichissement images, split index |
+| `supabase/migrations/` | Schéma SQL + RLS (partagé par le site principal et le prototype `web/`) |
+| `discord-bot/` | Bot Discord (Railway), indépendant du front |
+| `tools_*.js` | Scripts ponctuels (rebuild `jeux.json` depuis Gamdom, etc.) |
+
+---
+
+## Supabase
+
+- Le site **production** (`app.js`) utilise les constantes `ONLINE_SUPABASE_URL` / `ONLINE_SUPABASE_ANON` dans `app.js`.
+- Le prototype **web/** lit `import.meta.env.VITE_SUPABASE_*`.
+- Même projet Supabase possible ; les deux frontends doivent rester alignés sur les migrations dans `supabase/migrations/`.
+
+---
+
+## CI catalogue (GitHub Actions)
+
+Workflow : **`.github/workflows/sync-jeux-daily.yml`**
+
+| Déclencheur | Comportement |
+|-------------|--------------|
+| **Cron** (quotidien ~06h30 Paris) | `sync:recent-slots` → `enrich:images` (`GAMDOM_OG_MAX=400`, `HUB88_PROBE_MAX=2500`) |
+| **workflow_dispatch** + case *Enrichissement complet* | + `GAMDOM_OG_MAX=0`, `HUB88_PROBE_MAX=0` puis `enrich:gamdom-api` |
+
+Résumé des compteurs dans l’onglet **Summary** du job (`ci-catalog-stats.mjs`).
+
+En local, équivalent rapide :
+
+```bash
+npm test                   # smoke : jeux.json + build web/dist
+npm run catalog:stats
+npm run enrich:ci          # enrich:images (défaut 600/600) + stats
+npm run enrich:images:full # passe complète + API Gamdom
+```
+
+Workflow **`.github/workflows/ci.yml`** : `npm test` sur chaque push/PR vers `main` / `master`.
+
+Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDOM_OG` (voir `scripts/enrich-jeux-images.mjs`).
+
+---
+
+## UX / accessibilité (P2)
+
+- **Mobile ≤ 720px** : menu hamburger fixe, sidebar en drawer, backdrop, stats scrollables.
+- **Navigation** : onglets sidebar en `<button>` avec `aria-current="page"`.
+- **Modales** : `role="dialog"`, focus initial, Tab piégé, Échap pour fermer.
+- **Catalogue** : bandeau d’aide selon le mode ; pastille « Hors Gamdom » en mode étendu pour les `sr_*` / placeholders.
+
+---
+
+## Prod avancée (P3)
+
+- **Logs** : `console.warn` via `bhWarn` — activer avec `?debug=1`, `localStorage.setItem('bh_debug','1')` ou `window.__BH_DEBUG__ = true`. Les `console.error` restent visibles pour les incidents réels.
+- **PWA** : `manifest.webmanifest`, `sw.js` (cache shell CSS/JS/assets ; **pas** `jeux.json` ni Supabase). Enregistrement dans `app.js` au `DOMContentLoaded`.
+- **Catalogue allégé** : au build, `jeux.json` dans `web/dist/` est compacté (`devise` et `rtp` vides retirés, ~330 KiB de moins). Le fichier source à la racine garde tous les champs pour les scripts sync/enrich.
+
+---
+
+## Routing client multi-pages (Passe 1)
+
+Le site reste **techniquement une SPA** (un seul `index.html`, état Supabase + solde + parties en cours conservés) mais se comporte **côté UX comme un vrai site multi-pages** :
+
+| URL                  | Page sidebar       |
+|----------------------|--------------------|
+| `/`                  | Accueil            |
+| `/hunt`              | Bonus Hunt         |
+| `/blackjack`         | Tableau Blackjack  |
+| `/mise-optimale`     | Mise Optimale      |
+| `/roue-depot`        | Roue du Dépôt      |
+| `/pharaon`           | Le Pharaon         |
+| `/tournoi`           | Tournoi            |
+| `/stats`             | Statistiques       |
+| `/mini-jeux`         | Mini Jeux          |
+| `/updates`           | Updates            |
+| `/actualites`        | Actualités         |
+| `/review`            | Review             |
+| `/admin`             | Admin (admins)     |
+
+**Mécanique** (`app.js`) :
+- `PAGE_TO_SLUG` / `SLUG_TO_PAGE` : mapping bidirectionnel page ↔ slug URL.
+- `switchPage(page, opts)` : applique le panneau visible **et** `history.pushState({ page }, '', path)` + `document.title` de la page. Options : `{ replace: true }` (replaceState, ex. redirection admin → home) ou `{ skipHistory: true }` (ne pas re-pousser, ex. depuis `popstate`).
+- `popstate` : back/forward du navigateur → relit `location.pathname`, re-mount.
+- Routing initial : `initV101()` lit `location.pathname` et monte la bonne page (au lieu d'un `switchPage('home')` codé en dur).
+- `vercel.json` rewrite `/(.*)` → `index.html`, donc un **refresh ou un partage de lien** vers n'importe quelle URL fonctionne.
+
+**Lazy `jeux.json`** : le catalogue (~1.9 Mo en prod) **n'est plus chargé au boot**. `ensureSlotsLoaded()` (promesse mémoïsée) le déclenche au premier `switchPage('hunt')`. `refreshCatalogSilently()` ne pre-fetch pas tant que l'utilisateur n'a jamais consulté le catalogue. Sur une session qui reste sur `/blackjack` ou `/pharaon`, `jeux.json` n'est **jamais téléchargé**.
+
+**Lazy modules par page** : registre `LAZY_PAGE_SCRIPTS` (`app.js`) prêt à recevoir des entrées du type `pharaoh_slot: './scripts/pages/pharaon.js'`. `loadLazyPageScript(page)` est appelé dans `switchPage()` et est un no-op tant que la page n'est pas inscrite (rétrocompat totale).
+
+**Passe 2 prévue** : extraire les pages lourdes (`pharaon`, `roue_depot`, `mini-jeux`, `tournoi`, `admin`…) de `app.js` vers `scripts/pages/*.js` chargés à la demande. Plan détaillé dans [BACKLOG.md](./BACKLOG.md#refactoring-multi-pages--état--suite).
+
+---
+
+## Checklist avant une PR / un déploiement
+
+1. J’ai modifié **`index.html` / `styles.css` / `app.js`** (ou `jeux.json` / `assets/`) — pas seulement `web/src/`.
+2. `npm run build` passe.
+3. Si le catalogue a changé : `npm run enrich:images` ou `npm run enrich:images:full` si besoin.
+4. `npm run deploy:vercel` après changement visible sur le site.
+
+---
+
+## Backlog produit
+
+État détaillé et checklist : **[BACKLOG.md](./BACKLOG.md)**.
+
+## Évolution prévue (en cours / partiel)
+
+- ✅ Passe 1 multi-pages : URLs distinctes, lazy `jeux.json`, infra `LAZY_PAGE_SCRIPTS`.
+- 🔜 Passe 2 multi-pages : extraire pages lourdes (`pharaon`, `roue_depot`, `mini-jeux`, `tournoi`, `admin`) de `app.js` vers `scripts/pages/*.js` chargés à la demande.
+- Fusionner un jour le prototype `web/` dans le site principal **ou** le retirer si abandonné.
+- Jusqu’à décision explicite : **`index.html` + `styles.css` + `app.js` = prod**.

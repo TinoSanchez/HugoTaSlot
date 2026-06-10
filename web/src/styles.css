@@ -107,6 +107,28 @@ table { width: 100%; border-collapse: collapse; min-width: 760px; }
 th, td { border-bottom: 1px solid var(--border); padding: 10px; text-align: left; font-size: 17px; }
 th { color: var(--muted); font-family: "Share Tech Mono", monospace; font-size: 13px; }
 
+.wheel-card { background: #0d1526; }
+.wheel-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
+  gap: 8px;
+}
+.wheel-cell {
+  min-height: 54px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #111d33;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 18px;
+}
+.wheel-cell.active {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(240, 165, 0, 0.4) inset;
+  color: var(--gold);
+}
+
 .auth-shell {
   min-height: 100vh;
   display: grid;

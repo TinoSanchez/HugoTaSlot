@@ -252,14 +252,12 @@ function slotReportRowToJeux(s, idx) {
   if (!slotName) return null;
   const rtp =
     typeof s.rtp === 'number' && !Number.isNaN(s.rtp) ? `${s.rtp.toFixed(2)}%` : '';
-  const thumbText = encodeURIComponent(`${slotName}\n${providerName}`);
-  const generatedThumb = `https://placehold.co/325x234/0b1020/f0a500/png?text=${thumbText}`;
   return {
     id: `sr_${providerSlug}_${slotSlug}`,
     nom: slotName,
     provider: providerName || '—',
     rtp,
-    image: generatedThumb,
+    image: '',
     srSlug: String(s.slug || '').trim(),
     srProviderSlug: String(s.provider_slug || '').trim().toLowerCase(),
     gamdomUrl: gamdomSeoUrlForSlot(slotName, providerName),
@@ -435,13 +433,32 @@ async function main() {
   }
 
   const merged = arr.concat(toAdd);
-  const hubMax = Math.min(
-    2000,
-    Math.max(0, parseInt(process.env.HUB88_PROBE_MAX || '120', 10) || 120)
-  );
+  const probeEnv = process.env.HUB88_PROBE_MAX;
+  const hubMax =
+    probeEnv === '0'
+      ? 0
+      : Math.min(
+          50000,
+          Math.max(0, parseInt(probeEnv ?? '120', 10) || 120)
+        );
   const skipHub = process.env.SKIP_HUB88 === '1' || process.env.SKIP_HUB88 === 'true';
+  const gamdomEnv = process.env.GAMDOM_OG_MAX;
+  const gamdomMax =
+    gamdomEnv === '0'
+      ? 0
+      : Math.min(
+          50000,
+          Math.max(0, parseInt(gamdomEnv ?? '80', 10) || 80)
+        );
+  const skipGamdom =
+    process.env.SKIP_GAMDOM_OG === '1' || process.env.SKIP_GAMDOM_OG === 'true';
   try {
-    const imgStats = await enrichCatalogImages(merged, { hubMax, skipHub });
+    const imgStats = await enrichCatalogImages(merged, {
+      hubMax,
+      skipHub,
+      gamdomMax,
+      skipGamdom,
+    });
     console.log('Enrichissement vignettes :', imgStats);
   } catch (e) {
     console.warn('Enrichissement vignettes partiel :', e.message || e);

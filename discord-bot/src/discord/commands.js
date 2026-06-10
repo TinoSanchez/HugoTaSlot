@@ -2,6 +2,15 @@ import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { config } from '../config.js';
 import { supabase } from '../supabase.js';
 import { child } from '../lib/logger.js';
+import {
+  pickRandomCatalogSlot,
+  resolveCatalogSlotFromQuery,
+  searchCatalogSlots,
+  slotCatalogImageOrPlaceholder,
+  slotCatalogTitle,
+  slotChoiceValue,
+  slotGamdomOrSiteUrl,
+} from '../lib/catalog.js';
 
 const log = child({ mod: 'cmd' });
 const COLOR = 0x7F5A83;
@@ -28,11 +37,33 @@ export const commandDefs = [
   new SlashCommandBuilder()
     .setName('leaderboard')
     .setDescription('Top des derniers hunts terminés (par profit).'),
+  new SlashCommandBuilder()
+    .setName('slot')
+    .setDescription('Tire une slot au hasard depuis le catalogue du site (jeux.json).'),
+  new SlashCommandBuilder()
+    .setName('call')
+    .setDescription('Call machine : choisis une slot du catalogue ou tire au hasard.')
+    .addStringOption((o) => o
+      .setName('machine')
+      .setDescription('Tape le nom (ex. Hounds of Hell) puis choisis dans la liste')
+      .setRequired(false)
+      .setAutocomplete(true)),
 ].map((c) => c.toJSON());
 
 /* ─── Dispatcher ──────────────────────────────────────────────────────── */
 export async function registerInteractionHandlers(client) {
   client.on('interactionCreate', async (interaction) => {
+    if (interaction.isAutocomplete()) {
+      if (interaction.commandName === 'call' && interaction.options.getFocused(true).name === 'machine') {
+        try {
+          return await autocompleteCallMachine(interaction);
+        } catch (e) {
+          log.error({ err: e }, 'autocomplete call failed');
+          return interaction.respond([]).catch(() => {});
+        }
+      }
+      return;
+    }
     if (!interaction.isChatInputCommand()) return;
     try {
       switch (interaction.commandName) {
@@ -42,6 +73,8 @@ export async function registerInteractionHandlers(client) {
         case 'unlink': return cmdUnlink(interaction);
         case 'hunts': return cmdHunts(interaction);
         case 'leaderboard': return cmdLeaderboard(interaction);
+        case 'slot': return cmdRandomSlot(interaction);
+        case 'call': return cmdCall(interaction);
         default: return interaction.reply({ content: 'Commande inconnue.', flags: MessageFlags.Ephemeral });
       }
     } catch (e) {
@@ -213,6 +246,97 @@ async function cmdHunts(interaction) {
     .setURL(`${config.site.url}/`)
     .setFooter({ text: 'Voir le détail sur HugoTaSlot' });
   return interaction.editReply({ embeds: [embed] });
+}
+
+/* ─── Autocomplete /call machine ─────────────────────────────────────── */
+async function autocompleteCallMachine(interaction) {
+  const focused = interaction.options.getFocused(true);
+  const q = String(focused.value || '').trim();
+  if (q.length < 2) {
+    return interaction.respond([]);
+  }
+  const slots = await searchCatalogSlots(q, { limit: 25 });
+  const choices = slots.map((s) => {
+    const title = slotCatalogTitle(s);
+    const prov = String(s.provider || s.Provider || '').trim();
+    const name = prov ? `${title.slice(0, 68)} · ${prov.slice(0, 26)}` : title;
+    return { name: name.slice(0, 100), value: slotChoiceValue(s) };
+  });
+  return interaction.respond(choices);
+}
+
+function buildCatalogSlotEmbed(slot, mode) {
+  const title = slotCatalogTitle(slot);
+  const provider = String(slot.provider || slot.Provider || '').trim();
+  const url = slotGamdomOrSiteUrl(slot);
+  const isCall = mode === 'call';
+  const embed = new EmbedBuilder()
+    .setColor(isCall ? 0xffd700 : COLOR)
+    .setTitle(isCall ? `📣 Call machine : ${title}` : `🎰 Slot aléatoire : ${title}`)
+    .setTimestamp(new Date());
+  if (url) embed.setURL(url);
+  if (provider) embed.addFields({ name: 'Provider', value: provider.slice(0, 256), inline: true });
+  // Toujours une grande image : URL catalogue (tous champs connus) ou placeholder lisible
+  embed.setImage(slotCatalogImageOrPlaceholder(slot));
+  embed.setDescription(
+    isCall
+      ? 'Machine choisie dans le catalogue HugoTaSlot — à toi de jouer.'
+      : 'Tirage au sort parmi les slots du site.',
+  );
+  embed.setFooter({
+    text: isCall ? 'HugoTaSlot · bonne chance' : 'Catalogue HugoTaSlot (jeux.json)',
+  });
+  return embed;
+}
+
+/* ─── /slot (aléatoire) ──────────────────────────────────────────────── */
+async function cmdRandomSlot(interaction) {
+  await interaction.deferReply();
+  const slot = await pickRandomCatalogSlot();
+  if (!slot) {
+    return interaction.editReply({
+      content: 'Impossible de charger le catalogue du site (`jeux.json`). Vérifie `SITE_URL` ou réessaie dans un instant.',
+    });
+  }
+  return interaction.editReply({ embeds: [buildCatalogSlotEmbed(slot, 'slot')] });
+}
+
+/* ─── /call [machine] — liste autocomplete ou hasard ─────────────────── */
+async function cmdCall(interaction) {
+  await interaction.deferReply();
+  const machineRaw = interaction.options.getString('machine');
+  const query = machineRaw ? String(machineRaw).trim() : '';
+
+  let slot = null;
+  if (query) {
+    const { slot: resolved, ambiguous } = await resolveCatalogSlotFromQuery(query);
+    if (resolved) {
+      slot = resolved;
+    } else if (ambiguous.length > 1) {
+      const lines = ambiguous.slice(0, 12).map((s, i) => {
+        const t = slotCatalogTitle(s);
+        const p = String(s.provider || s.Provider || '').trim();
+        return `**${i + 1}.** ${t}${p ? ` · ${p}` : ''}`;
+      });
+      return interaction.editReply({
+        content:
+          `Plusieurs résultats pour « ${query.slice(0, 80)} ». Affine le nom ou choisis une ligne dans l’autocomplete :\n${lines.join('\n')}`.slice(0, 3900),
+      });
+    } else {
+      return interaction.editReply({
+        content: `Aucune slot trouvée pour « ${query.slice(0, 120)} » dans le catalogue (\`jeux.json\`).`,
+      });
+    }
+  } else {
+    slot = await pickRandomCatalogSlot();
+  }
+
+  if (!slot) {
+    return interaction.editReply({
+      content: 'Impossible de charger le catalogue du site (`jeux.json`). Vérifie `SITE_URL` ou réessaie dans un instant.',
+    });
+  }
+  return interaction.editReply({ embeds: [buildCatalogSlotEmbed(slot, 'call')] });
 }
 
 /* ─── /leaderboard ───────────────────────────────────────────────────── */

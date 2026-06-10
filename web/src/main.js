@@ -34,6 +34,10 @@ const state = {
   slots: [],
   page: "hunt",
   selectedHuntId: null,
+  depositWheel: {
+    values: [],
+    selectedIndex: null,
+  },
 };
 
 function money(v, c = "EUR") {
@@ -235,6 +239,86 @@ function selectedHunt() {
   return state.hunts.find((h) => h.id === state.selectedHuntId) || null;
 }
 
+function depositWheelTier(maxPlage) {
+  const m = Number(maxPlage);
+  if (!Number.isFinite(m)) return "large";
+  if (m <= 100) return "small";
+  if (m <= 300) return "med";
+  return "large";
+}
+
+function depositWheelValueOk(n, tier) {
+  const u = ((n % 10) + 10) % 10;
+  if (tier === "small") return u === 0 || u === 5;
+  if (tier === "med") return u === 0;
+  const h = ((n % 100) + 100) % 100;
+  return h === 0 || h === 25 || h === 50 || h === 75;
+}
+
+function listDepositWheelValidInts(lo, hi, tier) {
+  const a = Math.ceil(lo);
+  const b = Math.floor(hi);
+  if (b < a) return [];
+  const out = [];
+  for (let n = a; n <= b; n += 1) {
+    if (depositWheelValueOk(n, tier)) out.push(n);
+  }
+  return out;
+}
+
+function fillDepositWheelMiddle8Stratified(interior) {
+  const nI = interior.length;
+  const middle = [];
+  for (let i = 0; i < 8; i += 1) {
+    const loIdx = Math.floor((i * nI) / 8);
+    const hiIdx = Math.floor(((i + 1) * nI) / 8) - 1;
+    const a = Math.max(0, Math.min(nI - 1, loIdx));
+    const b = Math.max(a, Math.min(nI - 1, hiIdx));
+    const j = a + Math.floor(Math.random() * (b - a + 1));
+    middle.push(interior[j]);
+  }
+  middle.sort((x, y) => x - y);
+  return middle;
+}
+
+function generateDepositWheelValues(min, max) {
+  const lo = Number(min);
+  const hi = Number(max);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo <= 0 || hi <= 0) {
+    throw new Error("Plage invalide.");
+  }
+  if (hi <= lo) {
+    throw new Error("Le max doit être supérieur au min.");
+  }
+  const tier = depositWheelTier(hi);
+  const valid = listDepositWheelValidInts(lo, hi, tier);
+  if (valid.length < 1) {
+    throw new Error("Aucun montant valide dans cette plage pour ce palier (voir max : ≤100, 100–300, >300).");
+  }
+  const nV = valid.length;
+  const first = valid[0];
+  const last = valid[nV - 1];
+  const interior = valid.slice(1, nV - 1);
+  const nI = interior.length;
+  let middle;
+  if (nI >= 8) middle = fillDepositWheelMiddle8Stratified(interior);
+  else {
+    const pool = nI > 0 ? interior : valid;
+    middle = [];
+    for (let k = 0; k < 8; k += 1) {
+      middle.push(pool[Math.floor(Math.random() * pool.length)]);
+    }
+    middle.sort((x, y) => x - y);
+  }
+  return [first, ...middle, last];
+}
+
+function formatDepositWheelFr(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return "-";
+  return `${n},00`;
+}
+
 function renderPage() {
   const container = document.getElementById("content");
   if (state.page === "profile") {
@@ -371,8 +455,33 @@ function renderBonusPanel(hunt) {
         <option value="normal">Normal</option>
         <option value="bounty">Bounty</option>
         <option value="epic">Epic Bonus</option>
+        <option value="roue_depot">Roue du dépôt</option>
       </select>
       <button class="btn primary" id="add-bonus">Ajouter</button>
+    </div>
+    <div class="card wheel-card" style="margin-top:10px;">
+      <h3 style="margin:0 0 8px 0;">La roue du dépôt</h3>
+      <div class="muted" style="margin-bottom:10px;">
+        Max ≤100 : fins 0 ou 5 · 100–300 : multiples de 10 · &gt;300 : …00, 25, 50, 75. Case 1 = min, 10 = max.
+      </div>
+      <div class="row">
+        <input class="input" id="wheel-min-bet" type="number" min="0.01" step="0.01" placeholder="Mise min" style="max-width:140px;" />
+        <input class="input" id="wheel-max-bet" type="number" min="0.01" step="0.01" placeholder="Mise max" style="max-width:140px;" />
+        <button class="btn" id="wheel-generate">Générer 10 cases</button>
+        <button class="btn primary" id="wheel-spin">Lancer la roue</button>
+      </div>
+      <div class="wheel-grid" id="wheel-grid">
+        ${Array.from({ length: 10 })
+          .map((_, i) => {
+            const v = state.depositWheel.values[i];
+            const active = state.depositWheel.selectedIndex === i ? "active" : "";
+            return `<button class="wheel-cell ${active}" data-idx="${i}" type="button">${v != null ? formatDepositWheelFr(v) : "-"}</button>`;
+          })
+          .join("")}
+      </div>
+      <div class="muted" id="wheel-result" style="margin-top:8px;">
+        ${state.depositWheel.selectedIndex != null ? `Case tirée: ${formatDepositWheelFr(state.depositWheel.values[state.depositWheel.selectedIndex])}` : "Aucune case tirée pour le moment."}
+      </div>
     </div>
     <div class="table-wrap" style="margin-top:10px;">
       <table>
@@ -413,6 +522,59 @@ function bindBonusActions(hunt) {
       toast(e.message || "Ajout impossible", false);
     }
   };
+  const wheelMin = document.getElementById("wheel-min-bet");
+  const wheelMax = document.getElementById("wheel-max-bet");
+  const wheelResult = document.getElementById("wheel-result");
+  const wheelCells = () => [...document.querySelectorAll(".wheel-cell")];
+  const paintWheel = () => {
+    wheelCells().forEach((cell, idx) => {
+      const v = state.depositWheel.values[idx];
+      cell.textContent = v != null ? formatDepositWheelFr(v) : "-";
+      cell.classList.toggle("active", idx === state.depositWheel.selectedIndex);
+    });
+    if (wheelResult) {
+      wheelResult.textContent =
+        state.depositWheel.selectedIndex != null
+          ? `Case tirée: ${formatDepositWheelFr(state.depositWheel.values[state.depositWheel.selectedIndex])}`
+          : "Aucune case tirée pour le moment.";
+    }
+  };
+  document.getElementById("wheel-generate").onclick = () => {
+    try {
+      state.depositWheel.values = generateDepositWheelValues(wheelMin.value, wheelMax.value);
+      state.depositWheel.selectedIndex = null;
+      paintWheel();
+      toast("Roue du dépôt générée");
+    } catch (e) {
+      toast(e.message || "Plage invalide", false);
+    }
+  };
+  document.getElementById("wheel-spin").onclick = () => {
+    if (!state.depositWheel.values.length) {
+      toast("Génère d'abord les 10 cases.", false);
+      return;
+    }
+    const idx = Math.floor(Math.random() * 10);
+    state.depositWheel.selectedIndex = idx;
+    paintWheel();
+    const betInput = document.getElementById("b-bet");
+    if (betInput) betInput.value = state.depositWheel.values[idx].toFixed(2);
+    const typeSelect = document.getElementById("b-type");
+    if (typeSelect) typeSelect.value = "roue_depot";
+    toast(`Roue: ${formatDepositWheelFr(state.depositWheel.values[idx])}`);
+  };
+  wheelCells().forEach((cell) => {
+    cell.onclick = () => {
+      const idx = Number(cell.getAttribute("data-idx"));
+      if (!Number.isFinite(idx) || state.depositWheel.values[idx] == null) return;
+      state.depositWheel.selectedIndex = idx;
+      paintWheel();
+      const betInput = document.getElementById("b-bet");
+      if (betInput) betInput.value = state.depositWheel.values[idx].toFixed(2);
+      const typeSelect = document.getElementById("b-type");
+      if (typeSelect) typeSelect.value = "roue_depot";
+    };
+  });
   document.querySelectorAll(".bonus-win").forEach((el) => {
     el.onchange = async () => {
       try {

@@ -48,6 +48,25 @@ const server = http.createServer((req, res) => {
       }
       fs.readFile(filePath, (e, data) => {
         if (e) {
+          // Fallback SPA : mime le rewrite Vercel "/(.*)" → index.html
+          // pour que /hunt, /blackjack, /pharaon... fonctionnent en dev local.
+          const accept = String(req.headers['accept'] || '');
+          const ext = path.extname(pathname).toLowerCase();
+          const looksLikeHtmlNav = accept.includes('text/html') && !ext;
+          if (looksLikeHtmlNav) {
+            return fs.readFile(path.join(ROOT, 'index.html'), (e2, html) => {
+              if (e2) {
+                res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+                return res.end('404 Not Found: ' + pathname);
+              }
+              res.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-store',
+                'Access-Control-Allow-Origin': '*',
+              });
+              res.end(html);
+            });
+          }
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           return res.end('404 Not Found: ' + pathname);
         }

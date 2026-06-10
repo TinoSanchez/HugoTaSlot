@@ -1,0 +1,37 @@
+# Vérifications rapides sur push / PR : catalogue + build.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Stats catalogue
+        run: node scripts/ci-catalog-stats.mjs --markdown >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tests smoke (catalogue + build)
+        run: npm test
+        env:
+          # 248 sr_* connus (hors Gamdom) — plafond pour détecter une régression massive
+          CATALOG_MAX_PLACEHOLDERS: '500'

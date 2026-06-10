@@ -26,9 +26,15 @@ async function safe(name, fn) {
 }
 
 export function startScheduler() {
-  if (!cron.validate(config.cron.youtube)) throw new Error(`CRON_YOUTUBE invalide: ${config.cron.youtube}`);
-  if (!cron.validate(config.cron.slots)) throw new Error(`CRON_SLOTS invalide: ${config.cron.slots}`);
-  if (!cron.validate(CRON_CASINO)) throw new Error(`CRON_CASINO invalide: ${CRON_CASINO}`);
+  if (!cron.validate(config.cron.youtube)) {
+    throw new Error(`CRON_YOUTUBE invalide: ${JSON.stringify(config.cron.youtube)}`);
+  }
+  if (!cron.validate(config.cron.slots)) {
+    throw new Error(`CRON_SLOTS invalide: ${JSON.stringify(config.cron.slots)}`);
+  }
+  if (!cron.validate(CRON_CASINO)) {
+    throw new Error(`CRON_CASINO invalide: ${JSON.stringify(CRON_CASINO)}`);
+  }
 
   cron.schedule(config.cron.youtube, () => safe('youtube', runYoutubeCheck));
   cron.schedule(config.cron.slots, () => safe('slots', runSlotsCheck));

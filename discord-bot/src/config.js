@@ -13,6 +13,13 @@ function opt(name, fallback = '') {
   return v === undefined || v === null ? fallback : String(v).trim();
 }
 
+/** Railway injecte PORT ; si vide ou invalide, parseInt donne NaN → listen() ne répond pas au healthcheck. */
+function listenPort() {
+  const raw = opt('PORT', '3000');
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 3000;
+}
+
 export const config = {
   discord: {
     token: req('DISCORD_TOKEN'),
@@ -44,10 +51,10 @@ export const config = {
     initialDelayMs: parseInt(opt('INITIAL_DELAY_MS', '8000'), 10),
   },
   site: {
-    url: opt('SITE_URL', 'https://hugotaslot-cloud.vercel.app'),
+    url: opt('SITE_URL', 'https://hugotaslot.fr'),
   },
   log: {
     level: opt('LOG_LEVEL', 'info'),
   },
-  port: parseInt(opt('PORT', '3000'), 10),
+  port: listenPort(),
 };
