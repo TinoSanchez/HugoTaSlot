@@ -964,45 +964,217 @@ function dedupeAllHuntsBonuses() {
 }
 
 let uiAudioCtx = null;
-function playGameSfx(gameId, phase = 'start') {
+let __sfxNoiseBuf = null;
+
+// ─── MOTEUR AUDIO CASINO ───
+// Sons synthétisés en WebAudio (aucun fichier externe) : jetons, cartes,
+// roulette, pièces, explosions, fanfares de gain. Volume contrôlé par les
+// préférences utilisateur (uiVolume × uiGameVolume, mute respecté).
+function __sfxCtx() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!uiAudioCtx) uiAudioCtx = new AC();
+  if (uiAudioCtx.state === 'suspended') uiAudioCtx.resume();
+  const prefs = getUiPrefs();
+  if (prefs.uiMuted) return null;
+  const vol = Math.max(0, Math.min(1, (Number(prefs.uiVolume ?? 70) / 100)))
+    * Math.max(0, Math.min(1, (Number(prefs.uiGameVolume ?? 85) / 100)));
+  if (vol <= 0) return null;
+  if (!__sfxNoiseBuf) {
+    const len = uiAudioCtx.sampleRate * 1.2;
+    __sfxNoiseBuf = uiAudioCtx.createBuffer(1, len, uiAudioCtx.sampleRate);
+    const d = __sfxNoiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return { ctx: uiAudioCtx, vol, now: uiAudioCtx.currentTime };
+}
+function __sfxNoise(env, { at = 0, dur = 0.1, hp = 0, lp = 20000, peak = 0.05, attack = 0.005 } = {}) {
+  const { ctx, vol, now } = env;
+  const src = ctx.createBufferSource();
+  src.buffer = __sfxNoiseBuf;
+  src.loop = true;
+  let node = src;
+  if (hp > 0) { const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp; node.connect(f); node = f; }
+  if (lp < 20000) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; node.connect(f); node = f; }
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now + at);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * vol), now + at + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + at + dur);
+  node.connect(g); g.connect(ctx.destination);
+  src.start(now + at, Math.random() * 0.5); src.stop(now + at + dur + 0.03);
+  return node;
+}
+function __sfxTone(env, { at = 0, f0 = 440, f1 = 0, dur = 0.12, type = 'sine', peak = 0.05, attack = 0.008 } = {}) {
+  const { ctx, vol, now } = env;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(Math.max(20, f0), now + at);
+  if (f1 > 0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), now + at + dur);
+  g.gain.setValueAtTime(0.0001, now + at);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * vol), now + at + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + at + dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(now + at); o.stop(now + at + dur + 0.03);
+}
+function __sfxBell(env, { at = 0, freq = 880, dur = 0.5, peak = 0.05 } = {}) {
+  // Cloche : fondamentale + partiel inharmonique ×2.76 (timbre métallique)
+  __sfxTone(env, { at, f0: freq, dur, type: 'sine', peak, attack: 0.004 });
+  __sfxTone(env, { at, f0: freq * 2.76, dur: dur * 0.55, type: 'sine', peak: peak * 0.32, attack: 0.004 });
+}
+function casinoSfx(type, opt = {}) {
   try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    if (!uiAudioCtx) uiAudioCtx = new AC();
-    if (uiAudioCtx.state === 'suspended') uiAudioCtx.resume();
-    const o = uiAudioCtx.createOscillator();
-    const g = uiAudioCtx.createGain();
-    const now = uiAudioCtx.currentTime;
-    const prefs = getUiPrefs();
-    if (prefs.uiMuted) return;
-    const volume = Math.max(0, Math.min(1, (Number(prefs.uiVolume ?? 70) / 100)));
-    const gameVolume = Math.max(0, Math.min(1, (Number(prefs.uiGameVolume ?? 85) / 100)));
-    const finalVolume = volume * gameVolume;
-    if (finalVolume <= 0) return;
-    const base = gameId === 'blackjack' ? 320 : gameId === 'roulette' ? 260 : 380;
-    const peak = phase === 'win' ? base * 1.8 : phase === 'lose' ? base * 0.8 : base * 1.2;
-    o.type = phase === 'win' ? 'triangle' : 'sine';
-    o.frequency.setValueAtTime(base, now);
-    o.frequency.exponentialRampToValueAtTime(peak, now + 0.08);
-    g.gain.setValueAtTime(0.0001, now);
-    g.gain.exponentialRampToValueAtTime(0.03 * finalVolume, now + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-    o.connect(g); g.connect(uiAudioCtx.destination); o.start(now); o.stop(now + 0.13);
-    if (phase === 'win') {
-      const o2 = uiAudioCtx.createOscillator();
-      const g2 = uiAudioCtx.createGain();
-      o2.type = 'triangle';
-      o2.frequency.setValueAtTime(base * 1.4, now + 0.02);
-      o2.frequency.exponentialRampToValueAtTime(base * 2.15, now + 0.2);
-      g2.gain.setValueAtTime(0.0001, now + 0.02);
-      g2.gain.exponentialRampToValueAtTime(0.022 * finalVolume, now + 0.06);
-      g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-      o2.connect(g2);
-      g2.connect(uiAudioCtx.destination);
-      o2.start(now + 0.02);
-      o2.stop(now + 0.25);
+    const env = __sfxCtx();
+    if (!env) return;
+    const p = Math.max(0.4, Math.min(2.4, Number(opt.pitch || 1)));
+    switch (type) {
+      case 'chip': {
+        // Clac céramique : double claquement bref filtré
+        __sfxNoise(env, { dur: 0.028, hp: 2200, lp: 9000, peak: 0.075, attack: 0.002 });
+        __sfxTone(env, { f0: 2300 * p, f1: 1700 * p, dur: 0.03, type: 'square', peak: 0.022, attack: 0.002 });
+        __sfxNoise(env, { at: 0.035, dur: 0.022, hp: 2600, lp: 9500, peak: 0.05, attack: 0.002 });
+        break;
+      }
+      case 'chips': {
+        for (let i = 0; i < 4; i++) {
+          __sfxNoise(env, { at: i * 0.038, dur: 0.026, hp: 2100 + i * 220, lp: 9200, peak: 0.06, attack: 0.002 });
+        }
+        break;
+      }
+      case 'card': {
+        // Glissé de carte + snap final
+        __sfxNoise(env, { dur: 0.1, hp: 700, lp: 4200, peak: 0.045, attack: 0.03 });
+        __sfxNoise(env, { at: 0.085, dur: 0.018, hp: 1400, lp: 7000, peak: 0.065, attack: 0.002 });
+        break;
+      }
+      case 'flip': {
+        __sfxNoise(env, { dur: 0.07, hp: 900, lp: 5200, peak: 0.045, attack: 0.015 });
+        __sfxTone(env, { at: 0.06, f0: 480 * p, f1: 300 * p, dur: 0.05, type: 'triangle', peak: 0.03 });
+        break;
+      }
+      case 'spin': {
+        // Lancer de roue : souffle qui monte puis retombe
+        __sfxNoise(env, { dur: 0.55, hp: 380, lp: 2600, peak: 0.05, attack: 0.16 });
+        __sfxTone(env, { f0: 160, f1: 90, dur: 0.5, type: 'sine', peak: 0.02, attack: 0.1 });
+        break;
+      }
+      case 'tick': {
+        __sfxTone(env, { f0: 1900 * p, dur: 0.014, type: 'square', peak: 0.018, attack: 0.001 });
+        break;
+      }
+      case 'ball': {
+        // Bille qui retombe : tic-tic-toc amorti
+        __sfxTone(env, { f0: 2300, dur: 0.018, type: 'square', peak: 0.03, attack: 0.001 });
+        __sfxTone(env, { at: 0.09, f0: 2100, dur: 0.016, type: 'square', peak: 0.024, attack: 0.001 });
+        __sfxTone(env, { at: 0.165, f0: 1900, dur: 0.015, type: 'square', peak: 0.018, attack: 0.001 });
+        __sfxNoise(env, { at: 0.22, dur: 0.05, hp: 1200, lp: 6000, peak: 0.035, attack: 0.004 });
+        break;
+      }
+      case 'pop': {
+        __sfxTone(env, { f0: (560 + Math.random() * 240) * p, f1: 320 * p, dur: 0.045, type: 'sine', peak: 0.045, attack: 0.002 });
+        break;
+      }
+      case 'coin': {
+        const f = (1700 + Math.random() * 900) * p;
+        __sfxBell(env, { freq: f, dur: 0.22, peak: 0.035 });
+        break;
+      }
+      case 'cashout': {
+        // Cha-ching : double cloche + pluie de pièces
+        __sfxBell(env, { freq: 1567, dur: 0.4, peak: 0.05 });
+        __sfxBell(env, { at: 0.07, freq: 1975, dur: 0.45, peak: 0.045 });
+        for (let i = 0; i < 4; i++) {
+          __sfxBell(env, { at: 0.12 + i * 0.06, freq: 1900 + Math.random() * 1300, dur: 0.16, peak: 0.02 });
+        }
+        break;
+      }
+      case 'win': {
+        // Arpège majeur ascendant + shimmer
+        const notes = [880, 1108.7, 1318.5, 1760];
+        notes.forEach((f, i) => __sfxBell(env, { at: i * 0.075, freq: f, dur: 0.42, peak: 0.045 }));
+        __sfxNoise(env, { at: 0.05, dur: 0.45, hp: 6500, lp: 12000, peak: 0.018, attack: 0.1 });
+        for (let i = 0; i < 5; i++) {
+          __sfxBell(env, { at: 0.18 + i * 0.07, freq: 1800 + Math.random() * 1500, dur: 0.15, peak: 0.016 });
+        }
+        break;
+      }
+      case 'bigwin': {
+        // Fanfare : double arpège + sub + averse de pièces
+        __sfxTone(env, { f0: 80, f1: 50, dur: 0.4, type: 'sine', peak: 0.07, attack: 0.01 });
+        const arp1 = [659.3, 830.6, 987.8, 1318.5];
+        const arp2 = [880, 1108.7, 1318.5, 1760];
+        arp1.forEach((f, i) => __sfxBell(env, { at: i * 0.085, freq: f, dur: 0.5, peak: 0.05 }));
+        arp2.forEach((f, i) => __sfxBell(env, { at: 0.34 + i * 0.085, freq: f, dur: 0.6, peak: 0.05 }));
+        for (let i = 0; i < 12; i++) {
+          __sfxBell(env, { at: 0.3 + i * 0.075, freq: 1600 + Math.random() * 2200, dur: 0.18, peak: 0.018 });
+        }
+        __sfxNoise(env, { at: 0.25, dur: 0.9, hp: 7000, lp: 13000, peak: 0.02, attack: 0.2 });
+        break;
+      }
+      case 'lose': {
+        // Descente molle + thud sourd
+        __sfxTone(env, { f0: 220, f1: 116, dur: 0.32, type: 'triangle', peak: 0.035, attack: 0.01 });
+        __sfxNoise(env, { dur: 0.12, lp: 320, peak: 0.05, attack: 0.004 });
+        break;
+      }
+      case 'boom': {
+        // Explosion : burst grave + sub qui plonge
+        __sfxNoise(env, { dur: 0.42, lp: 900, peak: 0.12, attack: 0.003 });
+        __sfxNoise(env, { dur: 0.14, hp: 800, lp: 4500, peak: 0.06, attack: 0.002 });
+        __sfxTone(env, { f0: 95, f1: 32, dur: 0.45, type: 'sine', peak: 0.09, attack: 0.004 });
+        break;
+      }
+      case 'rocket': {
+        __sfxTone(env, { f0: 130 * p, f1: 520 * p, dur: 0.5, type: 'sawtooth', peak: 0.018, attack: 0.06 });
+        __sfxNoise(env, { dur: 0.5, hp: 300, lp: 1800, peak: 0.025, attack: 0.1 });
+        break;
+      }
+      default: {
+        __sfxTone(env, { f0: 600, dur: 0.05, type: 'sine', peak: 0.03 });
+      }
     }
-  } catch {}
+  } catch (_) {}
+}
+// Compat : ancien point d'entrée conservé, mappé sur le moteur casino
+function playGameSfx(gameId, phase = 'start') {
+  if (phase === 'win') casinoSfx('win');
+  else if (phase === 'lose') casinoSfx('lose');
+  else casinoSfx(gameId === 'roulette' ? 'spin' : 'card');
+}
+
+// ─── CÉLÉBRATION DE GAIN (overlay animé dans la fenêtre de jeu) ───
+function gameWinFx(prize, mult) {
+  try {
+    const amount = Number(prize || 0);
+    if (amount <= 0) return;
+    const m = Number(mult || 0);
+    const big = m >= 10 || amount >= 100;
+    const host = document.getElementById('game-window');
+    if (!host || host.classList.contains('hidden')) return;
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const fx = document.createElement('div');
+    fx.className = 'game-win-fx' + (big ? ' big' : '');
+    let coins = '';
+    if (!reduced) {
+      const n = big ? 26 : 14;
+      for (let i = 0; i < n; i++) {
+        const x = (Math.random() * 320 - 160).toFixed(0);
+        const y = (-(120 + Math.random() * 220)).toFixed(0);
+        const d = (Math.random() * 0.25).toFixed(2);
+        const s = (0.6 + Math.random() * 0.9).toFixed(2);
+        coins += `<span class="game-win-coin" style="--cx:${x}px;--cy:${y}px;--cd:${d}s;--cs:${s}"></span>`;
+      }
+    }
+    fx.innerHTML = `
+      ${big ? '<div class="game-win-banner">BIG WIN</div>' : ''}
+      <div class="game-win-amount">+${fmt(amount)}</div>
+      ${m > 1 ? `<div class="game-win-mult">×${m.toFixed(2)}</div>` : ''}
+      <div class="game-win-coins">${coins}</div>`;
+    host.appendChild(fx);
+    const bal = document.getElementById('game-window-balance');
+    if (bal) { bal.classList.remove('balance-pulse'); void bal.offsetWidth; bal.classList.add('balance-pulse'); }
+    setTimeout(() => { try { fx.remove(); } catch (_) {} }, big ? 2300 : 1700);
+  } catch (_) {}
 }
 function playUiTone(kind = 'click') {
   try {

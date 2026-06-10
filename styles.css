@@ -1405,16 +1405,16 @@
   }
   .game-window.da-pro {
     --game-panel-w: clamp(300px, 25vw, 370px);
-    background: radial-gradient(1300px 740px at 50% -20%, rgba(39,116,205,0.16), rgba(7,18,34,0.97) 52%);
+    background: radial-gradient(1300px 740px at 50% -20%, rgba(0,220,110,0.13), rgba(2,10,6,0.97) 52%);
   }
   .game-window.da-pro .game-top-bar {
     justify-content: center;
-    border-bottom-color: rgba(90,140,210,0.24);
-    background: linear-gradient(180deg, rgba(10,27,44,0.9), rgba(8,21,35,0.92));
+    border-bottom-color: rgba(0,220,110,0.22);
+    background: linear-gradient(180deg, rgba(4,16,10,0.92), rgba(3,13,8,0.94));
     position: relative;
   }
   .game-window.da-pro .game-title {
-    color: #eef6ff;
+    color: #ECFFF4;
     font-size: 50px;
     letter-spacing: 0.2px;
     text-align: center;
@@ -1465,9 +1465,9 @@
     bottom: 14px;
     width: var(--game-panel-w);
     height: calc(100vh - var(--header-h) - 34px);
-    border: 1px solid rgba(90,140,210,0.28);
+    border: 1px solid rgba(0,220,110,0.26);
     border-radius: 16px;
-    background: linear-gradient(180deg, rgba(25,53,78,0.82), rgba(20,45,67,0.88));
+    background: linear-gradient(180deg, rgba(8,26,17,0.84), rgba(6,20,13,0.90));
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1514,18 +1514,18 @@
     gap:10px;
   }
   .game-window.da-pro .bet-chips { justify-content:flex-end; }
-  .game-window.da-pro .play-btn { margin-left: 0; width: 100%; height: 48px; font-size: 20px; letter-spacing: 0.5px; background: linear-gradient(180deg, #2f73ff, #2a61da); color: #ecf5ff; }
-  .game-window.da-pro .bet-input { width: 100%; height: 48px; text-align: left; padding: 0 14px; background: rgba(12,29,48,0.95); border-color: rgba(110,160,220,0.3); color: #f0fbff; }
-  .game-window.da-pro .bet-btn { background: rgba(22,41,63,0.95); border-color: rgba(110,160,220,0.3); color:#d4e7fb; }
-  .gc-block { border: 1px solid rgba(96,149,216,0.28); border-radius: 12px; background: rgba(9,28,48,0.72); padding: 10px; }
-  .gc-title { font-family:'Share Tech Mono',monospace; font-size: 11px; color: #d6e7fb; letter-spacing: .4px; margin-bottom: 8px; }
+  .game-window.da-pro .play-btn { margin-left: 0; width: 100%; height: 48px; font-size: 20px; letter-spacing: 0.5px; background: linear-gradient(180deg, #00DC6E, #00A656); color: #03140B; }
+  .game-window.da-pro .bet-input { width: 100%; height: 48px; text-align: left; padding: 0 14px; background: rgba(5,18,11,0.95); border-color: rgba(0,220,110,0.30); color: #EDFFF5; }
+  .game-window.da-pro .bet-btn { background: rgba(8,26,17,0.95); border-color: rgba(0,220,110,0.30); color:#C9F2DC; }
+  .gc-block { border: 1px solid rgba(0,220,110,0.24); border-radius: 12px; background: rgba(4,16,10,0.74); padding: 10px; }
+  .gc-title { font-family:'Share Tech Mono',monospace; font-size: 11px; color: #C4EFD6; letter-spacing: .4px; margin-bottom: 8px; }
   .gc-value {
     height: 46px;
-    border: 1px solid rgba(101,156,223,0.28);
+    border: 1px solid rgba(0,220,110,0.26);
     border-radius: 10px;
-    background: rgba(10,29,49,0.95);
+    background: rgba(4,17,11,0.95);
     display:flex; align-items:center; padding: 0 12px;
-    font-family:'Rajdhani',sans-serif; font-size: 34px; font-weight:700; color:#f3fbff;
+    font-family:'Rajdhani',sans-serif; font-size: 34px; font-weight:700; color:#EFFFF6;
   }
   .gc-value.small { font-size: 28px; }
   .gc-row { display:flex; gap:8px; }
@@ -1535,9 +1535,9 @@
   .gc-action-btn:disabled { opacity: 0.45; box-shadow: none !important; }
   .game-window.da-pro .game-body > * {
     width: 100%;
-    border: 1px solid rgba(90,140,210,0.26);
+    border: 1px solid rgba(0,220,110,0.24);
     border-radius: 16px;
-    background: linear-gradient(180deg, rgba(6,31,46,0.94), rgba(6,20,38,0.98));
+    background: linear-gradient(180deg, rgba(4,20,12,0.94), rgba(3,13,8,0.98));
     padding: 14px;
   }
   .mini-game-shell {
@@ -1552,18 +1552,18 @@
   .game-window.da-pro .mini-game-shell button,
   .game-window.da-pro .mini-game-shell input,
   .game-window.da-pro .mini-game-shell select {
-    border-color: rgba(104,153,219,0.32);
-    background: rgba(12,35,57,0.92);
-    color: #e5f1ff;
+    border-color: rgba(0,255,140,0.30);
+    background: rgba(6,22,14,0.92);
+    color: #E2FBEC;
   }
   .game-window.da-pro .mini-game-shell button:hover {
-    border-color: rgba(129,178,240,0.55);
-    box-shadow: 0 0 14px rgba(67,130,225,0.28);
+    border-color: rgba(0,255,140,0.50);
+    box-shadow: 0 0 14px rgba(0,220,110,0.26);
   }
   .game-window.da-pro[data-game="blackjack"] .mini-bj-table,
   .game-window.da-pro[data-game="roulette"] .roulette-layout,
   .game-window.da-pro[data-game="plinko"] .mini-game-shell {
-    background: linear-gradient(180deg, rgba(5,28,46,0.94), rgba(5,18,35,0.98));
+    background: linear-gradient(180deg, rgba(4,18,11,0.94), rgba(3,12,7,0.98));
   }
   .game-window.da-pro[data-game="roulette"] .roulette-layout,
   .game-window.da-pro[data-game="plinko"] .mini-game-shell {
@@ -1578,9 +1578,9 @@
     align-items:stretch;
     justify-content:stretch;
     padding: 0;
-    border: 1px solid rgba(90,140,210,0.26);
+    border: 1px solid rgba(0,220,110,0.24);
     border-radius: 16px;
-    background: linear-gradient(180deg, rgba(8,35,52,0.94), rgba(6,22,40,0.98));
+    background: linear-gradient(180deg, rgba(5,22,14,0.94), rgba(3,14,9,0.98));
   }
   .antho-bj-stage {
     width: 100%;
@@ -1589,8 +1589,8 @@
     border-radius: 14px;
     overflow: hidden;
     background:
-      radial-gradient(900px 360px at 50% -120px, rgba(72,145,240,0.2), transparent 62%),
-      linear-gradient(180deg, rgba(4,33,50,0.9), rgba(3,20,36,0.96));
+      radial-gradient(900px 360px at 50% -120px, rgba(0,220,110,0.18), transparent 62%),
+      linear-gradient(180deg, rgba(3,20,12,0.90), rgba(2,12,7,0.96));
   }
   .antho-bj-reset {
     position: absolute;
@@ -1599,9 +1599,9 @@
     width: 28px;
     height: 28px;
     border-radius: 8px;
-    border: 1px solid rgba(104,153,219,0.32);
-    background: rgba(10,29,49,0.85);
-    color: #cfe5ff;
+    border: 1px solid rgba(0,255,140,0.30);
+    background: rgba(4,17,11,0.85);
+    color: #C7F2DA;
     cursor: pointer;
     font-size: 14px;
     z-index: 3;
@@ -1616,7 +1616,7 @@
   }
   .antho-bj-divider {
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(147,187,235,0.28), transparent);
+    background: linear-gradient(90deg, transparent, rgba(0,255,140,0.26), transparent);
     transform: translateY(-1px);
   }
   .antho-bj-seat {
@@ -1632,9 +1632,9 @@
     gap: 9px;
     padding: 7px 14px 7px 12px;
     border-radius: 999px;
-    border: 1px solid rgba(96,149,216,0.28);
-    background: rgba(14,40,62,0.78);
-    color: #e6f3ff;
+    border: 1px solid rgba(0,220,110,0.24);
+    background: rgba(7,25,16,0.78);
+    color: #E3FBED;
     font-family:'Rajdhani',sans-serif;
     font-size: 28px;
     line-height: 1;
@@ -1687,7 +1687,7 @@
   .game-window.da-pro[data-game="blackjack"] .mini-bj-card.red { color: #cf2b46; }
   .game-window.da-pro[data-game="blackjack"] .mini-bj-card.black { color: #1d2430; }
   .game-window.da-pro[data-game="blackjack"] .mini-bj-card.back {
-    background: linear-gradient(180deg, #2f73ff, #2457ba);
+    background: linear-gradient(180deg, #00DC6E, #2457ba);
     color: #eaf2ff;
   }
   .game-window.da-pro[data-game="blackjack"] .mini-bj-result {
@@ -1712,7 +1712,7 @@
     border-radius: 9px;
     padding: 5px 10px;
     background: rgba(8,33,54,0.86);
-    border: 1px solid rgba(104,153,219,0.32);
+    border: 1px solid rgba(0,255,140,0.30);
     color: #d9ebff;
     font-family: 'Rajdhani', sans-serif;
     font-size: 15px;
@@ -2232,7 +2232,7 @@
   .roulette-layout { width: 100%; height: 100%; border-radius: 14px; padding: 10px; display:flex; flex-direction:column; gap:10px; }
   .antho-roulette-stage {
     background: linear-gradient(180deg, rgba(6,28,46,0.92), rgba(4,20,38,0.98));
-    border: 1px solid rgba(90,140,210,0.26);
+    border: 1px solid rgba(0,220,110,0.24);
   }
   .antho-roulette-main {
     display: grid;
@@ -3663,5 +3663,191 @@
       padding-top: 4px;
     }
   }
+
+/* ════════════════════════════════════════════════════════════════
+   POLISH MINI JEUX — DA HugoTaSlot X 19EnPlein
+   Lobby premium, célébrations de gain, micro-animations des plateaux
+   ════════════════════════════════════════════════════════════════ */
+
+/* ─── Lobby : cartes premium ─── */
+.game-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(160deg, rgba(0,220,110,0.07), rgba(4,16,10,0.4) 55%),
+    var(--bg-glass);
+  border: 1px solid rgba(0,220,110,0.20);
+  cursor: pointer;
+}
+.game-card::after {
+  content: '';
+  position: absolute; top: -130%; left: -40%;
+  width: 55%; height: 360%;
+  background: linear-gradient(105deg, rgba(255,255,255,0), rgba(255,255,255,0.07), rgba(255,255,255,0));
+  transform: rotate(18deg) translateX(-140%);
+  transition: transform 0.65s ease;
+  pointer-events: none;
+}
+.game-card:hover::after { transform: rotate(18deg) translateX(420%); }
+.game-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(0,255,140,0.55);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.45), 0 0 26px rgba(0,220,110,0.18);
+}
+.game-card .game-card-icon img { width: 54px; height: 54px; }
+.game-card .game-card-rtp {
+  display: inline-block; margin-top: 6px; padding: 2px 9px;
+  border: 1px solid rgba(0,220,110,0.25); border-radius: 999px;
+  background: rgba(0,220,110,0.07); color: var(--gold);
+  font-size: 10px; letter-spacing: 1px;
+}
+
+/* ─── Fenêtre de jeu : bouton play avec reflet ─── */
+.game-window .play-btn { position: relative; overflow: hidden; }
+.game-window .play-btn:not(:disabled)::after {
+  content: '';
+  position: absolute; top: -60%; left: -30%;
+  width: 36%; height: 220%;
+  background: linear-gradient(105deg, rgba(255,255,255,0), rgba(255,255,255,0.22), rgba(255,255,255,0));
+  transform: rotate(16deg) translateX(-160%);
+  animation: playBtnSheen 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes playBtnSheen {
+  0%, 62% { transform: rotate(16deg) translateX(-160%); }
+  86%, 100% { transform: rotate(16deg) translateX(540%); }
+}
+
+/* ─── Jetons de mise : vrais jetons casino ─── */
+.bet-chip {
+  width: 38px; height: 38px;
+  border: 2px dashed rgba(255,255,255,0.85);
+  outline: 3px solid #0A8A48;
+  outline-offset: -5px;
+  background: radial-gradient(circle at 32% 30%, #4DFFAA, #00DC6E 52%, #067A40 100%);
+  color: #03140B; font-size: 12px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.5), 0 0 12px rgba(0,220,110,0.30);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.bet-chip:hover {
+  transform: translateY(-3px) rotate(-6deg) scale(1.07);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.55), 0 0 18px rgba(0,255,140,0.45);
+}
+.bet-chip:active { transform: translateY(0) scale(0.96); }
+
+/* ─── Pulse du solde au gain ─── */
+.balance-pulse { animation: balancePulse 0.9s cubic-bezier(0.22, 1.4, 0.36, 1); }
+@keyframes balancePulse {
+  0% { transform: scale(1); }
+  28% { transform: scale(1.22); color: var(--gold-true); text-shadow: 0 0 18px var(--gold-true-glow); }
+  100% { transform: scale(1); }
+}
+
+/* ─── Célébration de gain ─── */
+.game-win-fx {
+  position: absolute; inset: 0; z-index: 700;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; pointer-events: none;
+}
+.game-win-fx .game-win-amount {
+  font-family: 'Rajdhani', sans-serif; font-weight: 800; font-size: 64px;
+  color: var(--gold-true);
+  text-shadow: 0 0 26px var(--gold-true-glow), 0 4px 14px rgba(0,0,0,0.6);
+  animation: winAmountIn 1.5s cubic-bezier(0.18, 1.25, 0.4, 1) both;
+}
+.game-win-fx.big .game-win-amount { font-size: 86px; }
+.game-win-fx .game-win-mult {
+  font-family: 'Share Tech Mono', monospace; font-size: 20px; color: var(--gold);
+  text-shadow: 0 0 14px var(--gold-glow-strong);
+  animation: winAmountIn 1.5s 0.08s cubic-bezier(0.18, 1.25, 0.4, 1) both;
+}
+.game-win-fx .game-win-banner {
+  font-family: 'Rajdhani', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: 10px;
+  color: #FFE9A8;
+  padding: 6px 26px; border: 1px solid rgba(255,201,60,0.6); border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255,201,60,0.22), rgba(0,0,0,0.4));
+  text-shadow: 0 0 22px rgba(255,201,60,0.8);
+  box-shadow: 0 0 40px rgba(255,201,60,0.25);
+  animation: bigWinBanner 2s cubic-bezier(0.18, 1.3, 0.36, 1) both;
+}
+@keyframes winAmountIn {
+  0% { opacity: 0; transform: translateY(34px) scale(0.6); }
+  18% { opacity: 1; transform: translateY(0) scale(1.12); }
+  30% { transform: scale(1); }
+  82% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-26px); }
+}
+@keyframes bigWinBanner {
+  0% { opacity: 0; transform: scale(2.4); filter: blur(6px); }
+  22% { opacity: 1; transform: scale(1); filter: blur(0); }
+  84% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+.game-win-coins { position: absolute; left: 50%; top: 58%; }
+.game-win-coin {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #FFF3C4, #FFC93C 55%, #9A6E0E 100%);
+  box-shadow: 0 0 8px rgba(255,201,60,0.7);
+  transform: scale(var(--cs, 1));
+  animation: coinBurst 1.35s var(--cd, 0s) cubic-bezier(0.16, 0.7, 0.45, 1) both;
+}
+@keyframes coinBurst {
+  0% { opacity: 0; transform: translate(0, 0) scale(var(--cs)); }
+  10% { opacity: 1; }
+  60% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--cx), var(--cy)) scale(calc(var(--cs) * 0.7)) rotate(160deg); }
+}
+
+/* ─── Mines : reveal animé ─── */
+.mine-cell { position: relative; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.35); }
+.mine-cell:active:not(.revealed) { transform: scale(0.94); }
+.mine-cell.revealed { animation: mineFlip 0.32s ease; box-shadow: none; }
+.mine-cell.revealed.safe {
+  background: radial-gradient(circle at 50% 40%, rgba(0,230,118,0.22), rgba(0,230,118,0.06) 75%);
+  box-shadow: 0 0 14px rgba(0,220,110,0.25);
+}
+.mine-cell.revealed.mine {
+  background: radial-gradient(circle at 50% 40%, rgba(255,92,110,0.3), rgba(255,92,110,0.08) 75%);
+  border-color: var(--red);
+  animation: mineBoom 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes mineFlip {
+  0% { transform: rotateY(90deg) scale(0.85); }
+  100% { transform: rotateY(0) scale(1); }
+}
+@keyframes mineBoom {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px) rotate(-3deg); }
+  40% { transform: translateX(5px) rotate(3deg); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
+/* ─── Keno : tirage vivant ─── */
+.keno-num { transition: transform 0.14s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
+.keno-num:active { transform: scale(0.92); }
+.keno-num.selected {
+  box-shadow: 0 0 12px rgba(0,220,110,0.35), inset 0 0 0 1px rgba(0,255,140,0.4);
+}
+.keno-num.drawn { animation: kenoDrawn 0.3s ease; opacity: 0.85; }
+.keno-num.hit {
+  background: linear-gradient(160deg, rgba(255,201,60,0.30), rgba(255,201,60,0.10));
+  border-color: var(--gold-true); color: #FFE9A8;
+  box-shadow: 0 0 16px rgba(255,201,60,0.45);
+  animation: kenoHit 0.5s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes kenoDrawn { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes kenoHit {
+  0% { transform: scale(0.8) rotate(-6deg); }
+  55% { transform: scale(1.18) rotate(3deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* ─── Accessibilité : réduction des animations ─── */
+@media (prefers-reduced-motion: reduce) {
+  .game-card::after, .game-window .play-btn::after { animation: none; display: none; }
+  .game-win-coin { display: none; }
+  .mine-cell.revealed, .keno-num.drawn, .keno-num.hit { animation: none; }
+}
 
 

@@ -81,10 +81,11 @@ function addBetChip(amount) {
   if (!input) return;
   const cur = Math.max(0, parseFloat(input.value) || 0);
   input.value = (cur + amount).toFixed(2);
+  casinoSfx('chip');
 }
-function betHalf() { document.getElementById('bet-input').value = (getBet() / 2).toFixed(2); }
-function betDouble() { document.getElementById('bet-input').value = Math.min(getBet() * 2, getUserBalance()).toFixed(2); }
-function betMax() { document.getElementById('bet-input').value = getUserBalance().toFixed(2); }
+function betHalf() { document.getElementById('bet-input').value = (getBet() / 2).toFixed(2); casinoSfx('chip'); }
+function betDouble() { document.getElementById('bet-input').value = Math.min(getBet() * 2, getUserBalance()).toFixed(2); casinoSfx('chip'); }
+function betMax() { document.getElementById('bet-input').value = getUserBalance().toFixed(2); casinoSfx('chips'); }
 
 const pendingStakePreviewByGame = Object.create(null);
 function previewStakeDeduction(game, bet) {
@@ -156,9 +157,15 @@ function winGame(bet, multiplier) {
     setUserBalance(stakeState.hadPreview ? (getUserBalance() + prize) : (getUserBalance() - stake + prize));
   }
   updateLobbyBalance();
+  // Feedback casino : son + célébration visuelle proportionnels au gain
+  const m = Number(multiplier || 0);
+  if (m >= 10 || prize >= 100) casinoSfx('bigwin');
+  else if (m > 1.01) casinoSfx('win');
+  else if (prize > 0) casinoSfx('coin');
+  if (typeof gameWinFx === 'function' && m > 1.01) gameWinFx(prize, m);
   return prize;
 }
-function loseGame(bet) {
+function loseGame(bet, sfxType) {
   const gameId = resolveSettlementGameId(currentGame?.id || 'unknown', bet);
   const stakeState = consumeStakePreview(gameId, bet);
   const stake = stakeState.stake;
@@ -177,6 +184,7 @@ function loseGame(bet) {
     if (!stakeState.hadPreview) setUserBalance(getUserBalance() - stake);
   }
   updateLobbyBalance();
+  casinoSfx(sfxType || 'lose');
 }
 
 function playGame() {
@@ -563,6 +571,7 @@ async function diceAnimateRoll(finalValue) {
     return;
   }
   diceRolling = true;
+  casinoSfx('flip');
   face.classList.remove('rolling');
   void face.offsetWidth;
   face.classList.add('rolling');
@@ -752,6 +761,7 @@ async function flipPlay(pred) {
   if (!flipRoundActive) return;
   setFlipPred(pred);
   setFlipChoiceEnabled(false);
+  casinoSfx('flip');
   const coin = document.getElementById('flip-coin');
   if (coin) coin.classList.add('flipping');
   await gameSleep(900);
@@ -886,7 +896,7 @@ function crashLoseRound() {
   const status = document.getElementById('crash-status');
   if (disp) { disp.className = 'crash-multiplier crashed'; disp.textContent = `${crashAt.toFixed(2)}× KO`; }
   if (status) { status.textContent = `CRASH à ×${crashAt.toFixed(2)} — Misé: ${fmt(crashBet)} — PERDU`; status.style.color = 'var(--red)'; }
-  loseGame(crashBet);
+  loseGame(crashBet, 'boom');
   const main = document.getElementById('main-play-btn');
   if (main) main.textContent = 'RELANCER';
   showToast(`Crash à ×${crashAt.toFixed(2)}`, 'error');
@@ -944,6 +954,7 @@ function crashStartRound() {
   const status = document.getElementById('crash-status');
   if (disp) { disp.className = 'crash-multiplier'; disp.textContent = '1.00×'; }
   if (status) { status.textContent = 'Décollage...'; status.style.color = 'var(--gold)'; }
+  casinoSfx('rocket');
   updateCrashGraphVisual(1);
   const main = document.getElementById('main-play-btn');
   if (main) main.textContent = 'CASHOUT';
@@ -1043,6 +1054,7 @@ async function plinkoAnimateBall(ball, points) {
   for (let i = 0; i < points.length; i++) {
     const next = points[i];
     const segmentMs = i === points.length - 1 ? 170 : 96;
+    if (i > 0 && i % 2 === 0) casinoSfx('tick', { pitch: 0.8 + (i / points.length) * 0.6 });
     const segStart = performance.now();
     await new Promise((resolve) => {
       const step = (now) => {
@@ -1245,6 +1257,7 @@ function selectBjChip(val, btn) {
   selectedBjChip = Number(val) || 0.5;
   document.querySelectorAll('.bj-chip').forEach(x => x.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  casinoSfx('chip');
   refreshBjSpots();
 }
 function placeBjMainChip() {
@@ -1477,7 +1490,6 @@ function miniBjEndRound(bet, text, color, payoutMultiplier) {
   miniBjSetControls(false);
   setBjBettingOpen(true);
   pushGameHistory('blackjack', `${text} | Mise ${fmt(bet)} | x${Number(payoutMultiplier || 0).toFixed(2)}`);
-  playGameSfx('blackjack', payoutMultiplier > 1 ? 'win' : payoutMultiplier === 1 ? 'start' : 'lose');
   if (payoutMultiplier >= 2) triggerCinematicWin();
   if (payoutMultiplier > 0) {
     winGame(bet, payoutMultiplier);
@@ -1488,6 +1500,7 @@ function miniBjEndRound(bet, text, color, payoutMultiplier) {
 async function miniBjHit() {
   if (!miniBjState || !miniBjState.inRound) return;
   setDealerTalk('Carte pour le joueur.');
+  casinoSfx('card');
   miniBjState.player.push(miniBjDraw());
   miniBjRender(false);
   miniBjAnimateLatest('player');
@@ -1501,6 +1514,7 @@ async function miniBjStand() {
   miniBjRender(true);
   await gameSleep(220);
   while (miniBjTotal(miniBjState.dealer) < 17) {
+    casinoSfx('card');
     miniBjState.dealer.push(miniBjDraw());
     miniBjRender(true);
     miniBjAnimateLatest('dealer');
@@ -1552,7 +1566,7 @@ async function loadGamePlay(id) {
       return;
     }
     previewStakeDeduction('blackjack', bet);
-    playGameSfx('blackjack', 'start');
+    casinoSfx('card');
     showMiniBjSideBadge('');
     miniBjState = {
       bet,
@@ -1631,14 +1645,16 @@ async function loadGamePlay(id) {
     const nums = Array.from(document.querySelectorAll('.keno-num'));
     nums.forEach(el => el.classList.remove('drawn', 'hit'));
     for (const nDraw of drawOrder) {
+      let isHit = false;
       nums.forEach(el => {
         const n = parseInt(el.textContent, 10);
         if (n === nDraw) {
           el.classList.remove('drawn', 'hit');
         el.classList.add('drawn');
-          if (kenoSelected.has(n)) { el.classList.add('hit'); hits++; }
+          if (kenoSelected.has(n)) { el.classList.add('hit'); hits++; isHit = true; }
         }
       });
+      casinoSfx(isHit ? 'coin' : 'tick');
       await gameSleep(90);
     }
     nums.forEach(el => {
@@ -1695,7 +1711,7 @@ async function loadGamePlay(id) {
 
   if (id === 'roulette') {
     const rouletteAnimMs = 4800;
-    playGameSfx('roulette', 'start');
+    casinoSfx('spin');
     const totalStake = Object.values(rouletteBets).reduce((a,b) => a + b, 0);
     if (totalStake <= 0) { showToast('Place tes mises sur le plateau', 'error'); return; }
     previewStakeDeduction('roulette', totalStake);
@@ -1722,6 +1738,12 @@ async function loadGamePlay(id) {
       ball.classList.add('spin');
     }
     result_el.textContent = 'En cours...';
+    // Tics de roue qui décélèrent pendant l'animation
+    for (let i = 0; i < 26; i++) {
+      const t = Math.pow(i / 26, 1.7) * (rouletteAnimMs - 400);
+      setTimeout(() => casinoSfx('tick', { pitch: 1 - (i / 26) * 0.3 }), t);
+    }
+    setTimeout(() => casinoSfx('ball'), rouletteAnimMs - 350);
     await new Promise((resolve) => {
       let done = 0;
       const need = (wheel ? 1 : 0) + (ball ? 1 : 0);
@@ -1775,8 +1797,8 @@ async function loadGamePlay(id) {
         [s, s + 1, s + 3, s + 4].forEach(flashRouletteNumCell);
       }
     });
-    if (profit >= 0) { playGameSfx('roulette', 'win'); showToast(`${num} — Gain ${fmt(profit)}`, 'success'); }
-    else { playGameSfx('roulette', 'lose'); showToast(`${num} — Perte ${fmt(Math.abs(profit))}`, 'error'); }
+    if (profit >= 0) { showToast(`${num} — Gain ${fmt(profit)}`, 'success'); }
+    else { showToast(`${num} — Perte ${fmt(Math.abs(profit))}`, 'error'); }
     pushGameHistory('roulette', `${num} | ${profit >= 0 ? '+' : ''}${fmt(profit)}`);
     if (profit > totalStake * 1.5) triggerCinematicWin();
     setRouletteOpen(true);
@@ -1849,7 +1871,7 @@ function pumpInflate() {
   const crashChance = 0.13 + window._pumpMult * 0.085;
   const balloon = document.getElementById('pump-balloon');
   if (Math.random() < crashChance) {
-    loseGame(window._pumpBet);
+    loseGame(window._pumpBet, 'boom');
     if (balloon) { balloon.textContent = 'KO'; balloon.classList.add('ko'); balloon.classList.remove('shake'); balloon.style.animationDuration = ''; }
     document.getElementById('pump-status').textContent = `Explosé à ×${window._pumpMult.toFixed(2)} !`;
     document.getElementById('pump-mult').textContent = '×0';
@@ -1858,6 +1880,7 @@ function pumpInflate() {
     showToast(`Ballon explosé à ×${window._pumpMult.toFixed(2)} — Perdu ${fmt(window._pumpBet)}`, 'error', 3000);
   } else {
     window._pumpMult = +(window._pumpMult * (1.17 + Math.random() * 0.06)).toFixed(2);
+    casinoSfx('pop', { pitch: 0.7 + Math.min(1.4, window._pumpMult * 0.12) });
     if (balloon) {
       balloon.classList.remove('ko');
     }
@@ -2015,6 +2038,7 @@ function initHilo() {
 }
 function hiloPlay(dir) {
   if (!hiloRoundActive) { showToast('Lance une partie d’abord', 'info'); return; }
+  casinoSfx('card');
   const next = hiloDrawCard();
   hiloRenderCard(next, true);
   const curV = hiloCardNumericValue(hiloCurrentCard);
@@ -2075,6 +2099,7 @@ async function limboMainAction() {
   if (bet > bal) { showToast('Solde insuffisant', 'error'); return; }
   previewStakeDeduction('limbo', bet);
   limboRolling = true;
+  casinoSfx('rocket');
   const target = getLimboTarget();
   const disp = document.getElementById('limbo-val');
   const res = document.getElementById('limbo-result');
@@ -2236,6 +2261,7 @@ function roulettePlace(key) {
   const cur = rouletteBets[key] || 0;
   rouletteBets[key] = +(cur + chipAmount).toFixed(2);
   rouletteHistory.push({ key, amount: chipAmount });
+  casinoSfx('chip');
   updateRouletteUI();
 }
 function roulettePlaceSplit() {
@@ -2451,7 +2477,7 @@ function mineReveal(idx) {
   if (!cell || cell.classList.contains('revealed')) return;
   cell.classList.add('revealed');
   if (minesField[idx] === 'mine') {
-    loseGame(minesBet);
+    loseGame(minesBet, 'boom');
     cell.classList.add('mine'); cell.innerHTML = `<img src="./assets/cell-bomb.svg" alt="bomb">`;
     minesActive = false;
     document.getElementById('mines-cashout').style.display = 'none';
@@ -2466,6 +2492,7 @@ function mineReveal(idx) {
   } else {
     cell.classList.add('safe'); cell.innerHTML = `<img src="./assets/cell-safe.svg" alt="safe">`;
     minesRevealed++;
+    casinoSfx('pop', { pitch: 1 + Math.min(1.2, minesRevealed * 0.07) });
     minesMult = minesMultiplierFor(minesRevealed, minesCount);
     updateMinesMultiplierUI();
     const resultEl = document.getElementById('mines-result');
@@ -2509,8 +2536,8 @@ function initKeno() {
     num.className = 'keno-num';
     num.textContent = i;
     num.onclick = () => {
-      if (num.classList.contains('selected')) { num.classList.remove('selected'); kenoSelected.delete(i); }
-      else if (kenoSelected.size < 10) { num.classList.add('selected'); kenoSelected.add(i); }
+      if (num.classList.contains('selected')) { num.classList.remove('selected'); kenoSelected.delete(i); casinoSfx('tick'); }
+      else if (kenoSelected.size < 10) { num.classList.add('selected'); kenoSelected.add(i); casinoSfx('chip'); }
     };
     grid.appendChild(num);
   }
@@ -2708,7 +2735,7 @@ function chickenStartRound() {
 }
 function chickenLoseByCrash() {
   if (!chickenActive) return;
-  loseGame(chickenBet);
+  loseGame(chickenBet, 'boom');
   chickenActive = false;
   chickenSetStepEnabled(false);
   const player = document.getElementById('chicken-player');
@@ -2725,6 +2752,7 @@ function chickenStep() {
   if (chickenLane >= CHICKEN_TOTAL_LANES + 1) return;
   chickenAnimating = true;
   chickenLane += 1;
+  casinoSfx('pop', { pitch: 1 + chickenLane * 0.06 });
   const player = document.getElementById('chicken-player');
   if (player) player.style.top = `${chickenLaneY(chickenLane)}px`;
   setTimeout(() => {
