@@ -89,7 +89,7 @@ function renderBJTable() {
     row.forEach(cell => html += `<td class="${BJ_CLASSES[cell]||''}">${cell}</td>`);
     html += '</tr>';
   });
-  html += '<tr><td colspan="11" style="background:rgba(127,90,131,0.05);color:var(--gold-dim);font-size:9px;letter-spacing:2px;">SOFT (avec As)</td></tr>';
+  html += '<tr><td colspan="11" style="background:rgba(0,220,110,0.05);color:var(--gold-dim);font-size:9px;letter-spacing:2px;">SOFT (avec As)</td></tr>';
   Object.entries(BJ_SOFT).forEach(([total, row]) => {
     html += `<tr><td>A+${parseInt(total)-11}</td>`;
     row.forEach(cell => html += `<td class="${BJ_CLASSES[cell]||''}">${cell}</td>`);

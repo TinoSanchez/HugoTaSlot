@@ -3623,7 +3623,7 @@ const PAGE_TITLES = Object.freeze({
   review: 'Review',
   admin: 'Admin',
 });
-const SITE_NAME = 'HugoTaSlot';
+const SITE_NAME = 'HugoTaSlot X 19EnPlein';
 function pageToPath(page) {
   const slug = PAGE_TO_SLUG[page] ?? '';
   return slug ? `/${slug}` : '/';
@@ -3786,18 +3786,28 @@ const __PAGE_HTML = {
   <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
     <div class="hunt-title-area">
       <div class="hunt-title-main">ACCUEIL</div>
-      <div class="hunt-title-sub">Bienvenue sur HugoTaSlot</div>
+      <div class="hunt-title-sub">Bienvenue sur HugoTaSlot X 19EnPlein</div>
     </div>
   </header>
   <div class="page-content">
     <div class="home-hero">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <img src="./assets/icon-home.svg" class="ui-logo-icon" alt="logo">
+      <div class="home-hero-brand">
+        <img src="./assets/logo-hugotaslot.jpg" class="home-hero-logo" alt="HugoTaSlot">
+        <span class="home-hero-x" aria-hidden="true">×</span>
+        <img src="./assets/19enplein-logo.png" class="home-hero-logo" alt="19EnPlein">
         <div>
-          <div class="home-hero-title">HUGOTASLOT</div>
-          <div class="home-hero-sub">BONUS HUNT MANAGER — TABLEAU DE BORD CENTRAL</div>
+          <div class="home-hero-title">HUGOTASLOT <span class="home-hero-title-x">×</span> 19ENPLEIN</div>
+          <div class="home-hero-sub">BONUS HUNT MANAGER — TEAM STREAMERS CASINO</div>
         </div>
       </div>
+      <a class="home-partner-banner" href="https://gamdom.com" target="_blank" rel="noopener noreferrer" aria-label="Partenaire officiel : Gamdom">
+        <img src="./assets/gamdom-tower.png" class="home-partner-tower" alt="">
+        <div class="home-partner-text">
+          <div class="home-partner-label">PARTENAIRE OFFICIEL</div>
+          <img src="./assets/gamdom-logo-white.png" class="home-partner-logo" alt="Gamdom">
+        </div>
+        <span class="home-partner-cta">JOUER SUR GAMDOM →</span>
+      </a>
       <div class="home-grid">
         <div class="home-card">
           <div class="home-card-head"><img src="./assets/icon-hunt.svg" class="ui-logo-icon" alt=""><div class="home-card-title">DÉMARRAGE RAPIDE</div></div>
@@ -3982,7 +3992,7 @@ const __PAGE_HTML = {
         <span style="color:var(--green)">H=Tirer</span> &nbsp;
         <span style="color:var(--red)">S=Rester</span> &nbsp;
         <span style="color:var(--blue)">D=Doubler</span> &nbsp;
-        <span style="color:var(--gold)">P=Séparer</span>
+        <span style="color:var(--gold-true)">P=Séparer</span>
       </p>
       <div class="bj-table-wrap">
         <table class="bj-table" id="bj-strategy-table"></table>
@@ -4999,7 +5009,7 @@ function triggerCinematicWin() {
 function triggerJackpotConfetti() {
   const layer = document.createElement('div');
   layer.className = 'jackpot-confetti';
-  const colors = ['#7F5A83', '#00e676', '#ff4d6d', '#4db6ff', '#ffffff'];
+  const colors = ['#00DC6E', '#00e676', '#ff4d6d', '#4db6ff', '#ffffff'];
   for (let i = 0; i < 72; i++) {
     const p = document.createElement('span');
     p.className = 'jackpot-piece';

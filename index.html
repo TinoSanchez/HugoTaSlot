@@ -3,28 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HugoTaSlot — Bonus Hunt Manager</title>
-    <meta name="description" content="Bonus Hunt Manager pour streamers et joueurs : sessions, catalogue slots Gamdom, stats, tournois, roue du dépôt et outils live (opener, HUD).">
-    <meta name="theme-color" content="#020202">
-    <meta name="application-name" content="HugoTaSlot">
+    <title>HugoTaSlot X 19EnPlein — Bonus Hunt Manager</title>
+    <meta name="description" content="HugoTaSlot X 19EnPlein, en partenariat avec Gamdom : Bonus Hunt Manager pour streamers casino — sessions, catalogue slots, stats, tournois, roue du dépôt et outils live (opener, HUD).">
+    <meta name="theme-color" content="#020403">
+    <meta name="application-name" content="HugoTaSlot X 19EnPlein">
     <link rel="canonical" href="https://hugotaslot.fr/">
     <link rel="icon" href="./assets/logo-hugotaslot.jpg" type="image/jpeg">
     <link rel="apple-touch-icon" href="./assets/logo-hugotaslot.jpg">
     <link rel="manifest" href="./manifest.webmanifest">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="HugoTaSlot">
+    <meta name="apple-mobile-web-app-title" content="HugoTaSlot X 19EnPlein">
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="HugoTaSlot">
+    <meta property="og:site_name" content="HugoTaSlot X 19EnPlein">
     <meta property="og:locale" content="fr_FR">
     <meta property="og:url" content="https://hugotaslot.fr/">
-    <meta property="og:title" content="HugoTaSlot — Bonus Hunt Manager">
-    <meta property="og:description" content="Gérez vos bonus hunts : catalogue slots, sessions, stats, tournois et outils streamer (opener, HUD).">
+    <meta property="og:title" content="HugoTaSlot X 19EnPlein — Bonus Hunt Manager">
+    <meta property="og:description" content="La team 19EnPlein x HugoTaSlot, en partenariat avec Gamdom : bonus hunts, catalogue slots, stats, tournois et outils streamer (opener, HUD).">
     <meta property="og:image" content="https://hugotaslot.fr/assets/logo-hugotaslot.jpg">
-    <meta property="og:image:alt" content="Logo HugoTaSlot — Bonus Hunt Manager">
+    <meta property="og:image:alt" content="Logo HugoTaSlot X 19EnPlein — Bonus Hunt Manager">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="HugoTaSlot — Bonus Hunt Manager">
-    <meta name="twitter:description" content="Gérez vos bonus hunts : catalogue slots, sessions, stats, tournois et outils streamer.">
+    <meta name="twitter:title" content="HugoTaSlot X 19EnPlein — Bonus Hunt Manager">
+    <meta name="twitter:description" content="La team 19EnPlein x HugoTaSlot, en partenariat avec Gamdom : bonus hunts, catalogue slots, stats, tournois et outils streamer.">
     <meta name="twitter:image" content="https://hugotaslot.fr/assets/logo-hugotaslot.jpg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,9 +48,18 @@
   <!-- ─── SIDEBAR ─── -->
   <aside id="sidebar" aria-label="Navigation principale">
     <div class="sidebar-logo">
-      <img class="sidebar-logo-img" src="./assets/logo-hugotaslot.jpg" alt="HugoTaSlot logo">
-      <div class="logo-text">HugoTaSlot</div>
-      <div class="logo-sub">BONUS HUNT TOOL</div>
+      <div class="sidebar-logo-row">
+        <img class="sidebar-logo-img" src="./assets/logo-hugotaslot.jpg" alt="HugoTaSlot logo">
+        <span class="sidebar-logo-x" aria-hidden="true">×</span>
+        <img class="sidebar-logo-img" src="./assets/19enplein-logo.png" alt="19EnPlein logo">
+      </div>
+      <div class="logo-text">HUGOTASLOT</div>
+      <div class="logo-text-x">× 19ENPLEIN</div>
+      <div class="logo-sub">BONUS HUNT TOOL · TEAM CASINO</div>
+      <a class="sidebar-partner" href="https://gamdom.com" target="_blank" rel="noopener noreferrer" aria-label="Partenaire officiel : Gamdom">
+        <span class="sidebar-partner-label">PARTENAIRE OFFICIEL</span>
+        <img class="sidebar-partner-img" src="./assets/gamdom-logo-white.png" alt="Gamdom">
+      </a>
             </div>
             
     <button class="sidebar-btn" id="btn-new-hunt">+ NOUVEAU HUNT</button>
@@ -456,7 +465,7 @@
   <div class="auth-box">
     <div class="auth-header">
       <div class="auth-title" id="auth-title">CONNEXION</div>
-      <div class="auth-sub">HugoTaSlot · COMPTES JOUEURS</div>
+      <div class="auth-sub">HugoTaSlot X 19EnPlein · COMPTES JOUEURS</div>
     </div>
     <div class="auth-body">
       <div class="auth-error" id="auth-error"></div>
@@ -555,7 +564,7 @@
 <!-- ─── GAMDOM POPUP ─── -->
 <div class="gamdom-popup-hint hidden" id="gamdom-popup">
   <button class="gamdom-popup-close" onclick="toggleGamdomPopup()">✕</button>
-  <div class="gamdom-popup-title"><img src="./assets/virtual-token.svg" class="sidebar-tab-icon-logo" alt="slot"> GAIN GAMDOM</div>
+  <div class="gamdom-popup-title"><img src="./assets/gamdom-tower.png" class="sidebar-tab-icon-logo" alt="Gamdom"> GAIN GAMDOM</div>
   <div class="gamdom-popup-msg">Rentre le gain de ton bonus directement depuis Gamdom :</div>
   <input type="number" class="gamdom-popup-input" id="gamdom-gain-input" placeholder="0.00" step="0.01" min="0">
   <button class="gamdom-popup-btn" onclick="confirmGamdomGain()">ENREGISTRER CE GAIN</button>
