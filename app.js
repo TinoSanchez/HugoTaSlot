@@ -2444,6 +2444,7 @@ async function importShareCode() {
       };
       if (!huntBonusMachineConflict(hunt, row)) hunt.bonuses.push(row);
     }
+    setUndoSnapshot('import share');
     state.hunts.push(hunt);
     state.activeHuntId = hunt.id;
     save();
@@ -2584,18 +2585,17 @@ document.getElementById('hunt-import-input').addEventListener('change', (e) => {
 document.getElementById('btn-undo-action').addEventListener('click', runUndo);
 document.getElementById('btn-redo-action').addEventListener('click', runRedo);
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-    if (e.shiftKey) return;
-    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-    if (tag === 'input' || tag === 'textarea') return;
-    e.preventDefault();
-    runUndo();
-  }
-  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-    if (tag === 'input' || tag === 'textarea') return;
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const key = e.key.toLowerCase();
+  if (key !== 'z' && key !== 'y') return;
+  const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+  if (tag === 'input' || tag === 'textarea') return;
+  if (key === 'y' || (key === 'z' && e.shiftKey)) {
     e.preventDefault();
     runRedo();
+  } else {
+    e.preventDefault();
+    runUndo();
   }
 });
 
@@ -2673,7 +2673,10 @@ function editHuntMeta(huntId) {
 }
 
 function deleteHunt(id) {
-  if (!requireWriteAccess('Suppression hunt bloquée')) return;
+  // ignoreReadOnlyHunt : supprimer un hunt partagé (lecture seule) doit rester
+  // possible — on ne retire que la copie locale, et le check portait de toute
+  // façon sur le hunt ACTIF, pas sur celui qu'on supprime.
+  if (!requireWriteAccess('Suppression hunt bloquée', { ignoreReadOnlyHunt: true })) return;
   setUndoSnapshot('suppression hunt');
   state.hunts = state.hunts.filter(h => h.id !== id);
   removeHuntMeta(id);
@@ -3600,8 +3603,8 @@ function renderOpener() {
   const total = hunt.bonuses.length;
 
   document.getElementById('opener-badge').textContent = `BONUS ${i+1} / ${total}`;
-  document.getElementById('opener-slot-name').textContent = bonus.slotName;
-  document.getElementById('opener-slot-prov').textContent = bonus.slotProvider.toUpperCase();
+  document.getElementById('opener-slot-name').textContent = bonus.slotName || 'Slot';
+  document.getElementById('opener-slot-prov').textContent = String(bonus.slotProvider || '').toUpperCase();
   document.getElementById('opener-stake').textContent = `MISE : ${fmt(bonus.stake)}`;
   const openerKind = document.getElementById('opener-bonus-kind');
   if (openerKind) {
