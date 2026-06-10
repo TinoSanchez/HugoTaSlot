@@ -4202,16 +4202,17 @@ const __PAGE_HTML = {
   <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
     <div class="hunt-title-area">
       <div class="hunt-title-main">ACTUALITÉS</div>
-      <div class="hunt-title-sub">Vidéos HugoTaSlot + nouvelles sorties (répertoire SlotCatalog — même jeu que sur Stake, Gamdom, Shuffle, Celsius, etc.)</div>
+      <div class="hunt-title-sub">Vidéos & news de la team — nouvelles sorties slots (mêmes titres sur Gamdom, Stake, Shuffle, Celsius)</div>
     </div>
+    <span class="news-team-badge"><img src="./assets/19enplein-logo.png" alt="" aria-hidden="true">TEAM 19ENPLEIN</span>
     <div style="margin-left:auto;display:flex;gap:8px;">
       <button class="profile-mini-btn" type="button" onclick="renderNewsPage(true)">↻ Rafraîchir</button>
     </div>
   </header>
   <div class="page-content" style="padding:14px;display:flex;flex-direction:column;gap:14px;">
-    <div class="drop-box">
-      <div class="drop-title">Dernières vidéos YouTube</div>
-      <div class="drop-meta" style="margin-bottom:10px;">Postées automatiquement par le bot Discord depuis la chaîne HugoTaSlot.</div>
+    <div class="drop-box news-box-team">
+      <div class="drop-title">Dernières vidéos de la team</div>
+      <div class="drop-meta" style="margin-bottom:10px;">Postées automatiquement par le bot Discord depuis la chaîne HugoTaSlot — la team 19EnPlein en action.</div>
       <div id="news-videos-grid" class="news-grid"><div class="bj-rec">Chargement…</div></div>
     </div>
     <div class="drop-box">

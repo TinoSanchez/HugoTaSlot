@@ -49,10 +49,10 @@ function mapTournoiRow(e) {
   };
 }
 
-function tournoiCardHtml(e, rankLabel) {
+function tournoiCardHtml(e, rankLabel, rankClass) {
   const safeReplay = isSafeUrl(e.replay) ? escapeHtml(e.replay) : '';
   return `
-    <div class="tournoi-card">
+    <div class="tournoi-card${rankClass ? ' ' + rankClass : ''}">
       <div class="tournoi-rank">${rankLabel}</div>
       <div class="tournoi-info">
         <div class="tournoi-name">${escapeHtml(e.huntName)}</div>
@@ -130,7 +130,7 @@ async function renderTournoiLeaderboard() {
   if (!tournoiCachePodium.length) {
     pod.innerHTML = '<div class="empty-state" style="min-height:120px;"><div class="empty-text">Aucune entrée pour ce mois (ou mois encore vide).</div></div>';
   } else {
-    pod.innerHTML = tournoiCachePodium.map((e, i) => tournoiCardHtml(e, podiumMedals[i] || '#' + (i + 1))).join('');
+    pod.innerHTML = tournoiCachePodium.map((e, i) => tournoiCardHtml(e, podiumMedals[i] || '#' + (i + 1), i < 3 ? `pod-${i + 1}` : '')).join('');
   }
 
   const entries = tournoiCacheCurrent.slice().sort((a, b) => b.multiplier - a.multiplier);
@@ -138,7 +138,7 @@ async function renderTournoiLeaderboard() {
     lb.innerHTML = '<div class="empty-state" style="height:200px;"><div class="empty-icon"><img src="./assets/virtual-token.svg" class="ui-logo-icon" alt="tournoi"></div><div class="empty-text">AUCUNE ENTRÉE CE MOIS-CI — SOIS LE PREMIER !</div></div>';
     return;
   }
-  lb.innerHTML = entries.map((e, i) => tournoiCardHtml(e, '#' + (i + 1))).join('');
+  lb.innerHTML = entries.map((e, i) => tournoiCardHtml(e, '#' + (i + 1), i < 3 ? `pod-${i + 1}` : '')).join('');
 }
 
 function showSubmitTournoi() {

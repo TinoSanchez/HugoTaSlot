@@ -1119,6 +1119,24 @@
     display: flex; align-items: center; gap: 12px;
   }
   .tournoi-rank { font-family: 'Share Tech Mono', monospace; font-size: 20px; color: var(--gold); width: 36px; text-align: center; }
+  /* Podium or / argent / bronze (DA 19EnPlein) */
+  .tournoi-card.pod-1 {
+    border-color: rgba(255,201,60,0.55);
+    background: linear-gradient(135deg, rgba(255,201,60,0.12), var(--bg-glass) 62%);
+    box-shadow: 0 0 22px rgba(255,201,60,0.14);
+  }
+  .tournoi-card.pod-1 .tournoi-rank { color: var(--gold-true); text-shadow: 0 0 14px var(--gold-true-glow); }
+  .tournoi-card.pod-1 .tournoi-score { color: var(--gold-true); }
+  .tournoi-card.pod-2 {
+    border-color: rgba(205,215,225,0.42);
+    background: linear-gradient(135deg, rgba(205,215,225,0.09), var(--bg-glass) 62%);
+  }
+  .tournoi-card.pod-2 .tournoi-rank { color: #CDD7E1; text-shadow: 0 0 10px rgba(205,215,225,0.4); }
+  .tournoi-card.pod-3 {
+    border-color: rgba(210,130,80,0.48);
+    background: linear-gradient(135deg, rgba(210,130,80,0.10), var(--bg-glass) 62%);
+  }
+  .tournoi-card.pod-3 .tournoi-rank { color: #D28250; text-shadow: 0 0 10px rgba(210,130,80,0.45); }
   .tournoi-info { flex: 1; min-width: 0; }
   .tournoi-name { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 15px; color: var(--text); }
   .tournoi-meta { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
@@ -1285,6 +1303,22 @@
   .hub-kpi-v { font-family:'Rajdhani',sans-serif; font-size:24px; font-weight:700; color:var(--gold); margin-top:2px; }
   .drop-meta { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); margin-top: 4px; line-height: 1.5; }
   .news-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .news-team-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border-radius: var(--radius-sm);
+    border: 1px solid rgba(255,201,60,0.45);
+    background: linear-gradient(135deg, rgba(255,201,60,0.10), rgba(0,0,0,0.30));
+    font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 13px;
+    letter-spacing: 2px; color: var(--gold-true); white-space: nowrap;
+    text-shadow: 0 0 12px var(--gold-true-glow);
+  }
+  .news-team-badge img {
+    width: 24px; height: 24px; border-radius: 6px; object-fit: cover;
+    border: 1px solid rgba(255,201,60,0.4);
+  }
+  .news-box-team { border-color: rgba(255,201,60,0.28); }
+  .news-box-team .drop-title { color: var(--gold-true); }
+  @media (max-width: 900px) { .news-team-badge { display: none; } }
   .news-card { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-mid); transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
   .news-card:hover { transform: translateY(-2px); border-color: var(--border-bright); box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
   .news-card-thumb { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; overflow: hidden; }
