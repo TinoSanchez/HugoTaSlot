@@ -51,11 +51,7 @@ function openGame(id) {
   win.setAttribute('data-game', id);
   win.classList.remove('hidden');
   const titleEl = document.getElementById('game-window-title');
-  if (titleEl) {
-    if (id === 'blackjack') titleEl.textContent = 'Blackjack en Ligne — Joue au Blackjack sur HugoTaSlot';
-    else if (id === 'plinko') titleEl.textContent = 'Jeu Plinko en Ligne — Joue et Gagne des Crédits';
-    else titleEl.textContent = `${currentGame.name} en Ligne — Joue et Gagne des Crédits`;
-  }
+  if (titleEl) titleEl.textContent = currentGame.name;
   updateLobbyBalance();
   loadGameUI(id);
 }
