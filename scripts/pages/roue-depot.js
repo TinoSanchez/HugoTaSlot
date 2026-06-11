@@ -239,13 +239,41 @@ function depositWheelSyncRouletteVisual() {
     });
   });
 }
-function depositWheelGenerate() {
+/** Lit min/max en entiers ronds (pas de décimales). */
+function depSlotReadIntRange() {
   const minEl = document.getElementById('dep-min');
   const maxEl = document.getElementById('dep-max');
-  const min = Math.max(0.01, Number(minEl?.value || 0));
-  const max = Math.max(0.01, Number(maxEl?.value || 0));
+  const min = Math.max(1, Math.round(Number(minEl?.value || 0)));
+  const max = Math.max(1, Math.round(Number(maxEl?.value || 0)));
+  if (minEl) minEl.value = String(min);
+  if (maxEl) maxEl.value = String(max);
+  return { min, max, minEl, maxEl };
+}
+function depSlotBindIntInputs() {
+  ['dep-min', 'dep-max'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.depIntBound === '1') return;
+    el.dataset.depIntBound = '1';
+    el.step = '1';
+    el.min = '1';
+    el.addEventListener('input', () => {
+      if (el.value === '' || el.value === '-') return;
+      const n = Math.round(Number(el.value));
+      if (!Number.isFinite(n)) return;
+      if (el.value.includes('.') || el.value.includes(',') || Number(el.value) !== n) {
+        el.value = String(Math.max(1, n));
+      }
+    });
+    el.addEventListener('blur', () => {
+      if (el.value === '') return;
+      el.value = String(Math.max(1, Math.round(Number(el.value) || 1)));
+    });
+  });
+}
+function depositWheelGenerate() {
+  const { min, max } = depSlotReadIntRange();
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    showToast('Plage invalide (max > min)', 'error');
+    showToast('Plage invalide (max > min, entiers uniquement)', 'error');
     return;
   }
   depositWheelValues = depositWheelStratifiedEndingInts(min, max);
@@ -360,9 +388,11 @@ function depositWheelSpin() {
   if (stopsRemaining === 0) allDone();
 }
 function initDepositWheel() {
+  depSlotBindIntInputs();
   depositWheelValues = [];
   depositWheelSelected = -1;
   depositWheelRender();
   depositWheelSyncRouletteVisual();
   depositWheelSetResult('Génère tes 10 montants pour commencer.');
 }
+depSlotBindIntInputs();

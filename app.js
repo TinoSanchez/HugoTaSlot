@@ -4259,8 +4259,8 @@ const __PAGE_HTML = {
       <div style="font-family:'Rajdhani',sans-serif;font-size:20px;color:var(--gold);text-align:center;">LE SLOT DU DÉPÔT</div>
       <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;">3 rouleaux, 1 montant · pas de décimales · case 1 = min, case 10 = max.</div>
       <div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;">
-        <input type="number" class="bj-input" id="dep-min" value="0.20" min="0.01" step="0.01" style="width:110px;" placeholder="Min">
-        <input type="number" class="bj-input" id="dep-max" value="2.00" min="0.02" step="0.01" style="width:110px;" placeholder="Max">
+        <input type="number" class="bj-input" id="dep-min" value="10" min="1" step="1" inputmode="numeric" style="width:110px;" placeholder="Min">
+        <input type="number" class="bj-input" id="dep-max" value="100" min="1" step="1" inputmode="numeric" style="width:110px;" placeholder="Max">
         <button class="bet-btn" onclick="depositWheelGenerate()">Générer 10 cases</button>
       </div>
       <div class="deposit-wheel-grid" id="deposit-wheel-grid">
