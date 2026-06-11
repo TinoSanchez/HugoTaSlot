@@ -22,7 +22,7 @@ const GAMES = [
 let currentGame = null;
 let gameInterval = null;
 let activeGameBalanceAnchor = null;
-// depositWheelValues, depositWheelSelected, depositWheelSpinRotation, depositWheelSpinning
+// depositWheelValues, depositWheelSelected, depositWheelSpinning
 // → déclarés dans roue-depot.js (chargé lazily quand deposit_wheel est ouvert)
 
 function renderGamesLobby() {
@@ -440,8 +440,8 @@ function loadGameUI(id) {
     </div>`,
 
     deposit_wheel: `<div class="deposit-wheel-wrap">
-      <div style="font-family:'Rajdhani',sans-serif;font-size:20px;color:var(--gold);text-align:center;">LA ROUE DU DÉPÔT</div>
-      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;">Selon le max : 0/5 · mult. 10 · ou …00/25/50/75 · case 1=min, 10=max.</div>
+      <div style="font-family:'Rajdhani',sans-serif;font-size:20px;color:var(--gold);text-align:center;">LE SLOT DU DÉPÔT</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;">3 rouleaux, 1 montant · selon le max : 0/5 · mult. 10 · ou …00/25/50/75 · case 1=min, 10=max.</div>
       <div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;">
         <input type="number" class="bj-input" id="dep-min" value="0.20" min="0.01" step="0.01" style="width:110px;" placeholder="Min">
         <input type="number" class="bj-input" id="dep-max" value="2.00" min="0.02" step="0.01" style="width:110px;" placeholder="Max">
@@ -459,33 +459,25 @@ function loadGameUI(id) {
         <div class="deposit-wheel-cell" id="dep-cell-9">—</div>
         <div class="deposit-wheel-cell" id="dep-cell-10">—</div>
       </div>
-      <div class="deposit-roulette-stage deposit-roulette-stage--empty">
-        <div class="deposit-roulette-hub">
-          <div class="deposit-roulette-pointer" aria-hidden="true"></div>
-          <div class="deposit-roulette-disc-wrap">
-            <div class="deposit-roulette-glow" aria-hidden="true"></div>
-            <div class="deposit-roulette-ring deposit-roulette-ring--outer" aria-hidden="true"></div>
-            <div class="deposit-roulette-ring deposit-roulette-ring--inner" aria-hidden="true"></div>
-            <div class="deposit-roulette-particles" aria-hidden="true">
-              <span style="--sx: 64px; --sy: -52px;"></span>
-              <span style="--sx: -60px; --sy: -48px;"></span>
-              <span style="--sx: 72px; --sy: 28px;"></span>
-              <span style="--sx: -68px; --sy: 36px;"></span>
-              <span style="--sx: 8px; --sy: -78px;"></span>
-              <span style="--sx: -12px; --sy: 74px;"></span>
-              <span style="--sx: 52px; --sy: 56px;"></span>
-              <span style="--sx: -44px; --sy: -62px;"></span>
-            </div>
-            <div class="deposit-roulette-disc"></div>
-            <div class="deposit-roulette-center-cap">DÉPÔT</div>
+      <div class="deposit-slot-stage deposit-slot-stage--empty">
+        <div class="deposit-slot-machine">
+          <div class="deposit-slot-marquee"><span>DÉPÔT</span></div>
+          <div class="deposit-slot-lights" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div class="deposit-slot-reels">
+            <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
+            <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
+            <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
+            <div class="deposit-slot-payline" aria-hidden="true"></div>
           </div>
         </div>
       </div>
       <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
-        <button class="bet-btn" onclick="depositWheelSpin()" style="border-color:var(--gold);color:var(--gold);">Lancer la roue</button>
+        <button class="bet-btn" onclick="depositWheelSpin()" style="border-color:var(--gold);color:var(--gold);">LANCER LES ROULEAUX</button>
         <a class="bet-btn" href="https://gamdom.com/fr-fr/?modal=wallet&amp;tab=deposit" target="_blank" rel="noopener noreferrer" style="border-color:var(--blue);color:var(--blue);">Go dépôt</a>
       </div>
-      <div class="dep-result" style="font-family:'Rajdhani',sans-serif;font-size:18px;color:var(--text-dim);text-align:center;">Génère ta roue pour commencer.</div>
+      <div class="dep-result" style="font-family:'Rajdhani',sans-serif;font-size:18px;color:var(--text-dim);text-align:center;">Génère tes 10 montants pour commencer.</div>
     </div>`,
 
     plinko: `<div style="text-align:center;width:100%;">

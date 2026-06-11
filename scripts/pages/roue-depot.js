@@ -1,14 +1,17 @@
-// Roue du Dépôt
+// Slot du Dépôt — machine à sous 3 rouleaux
 // Chargé lazily par scripts/pages/roue-depot.js via LAZY_PAGE_SCRIPTS dans app.js
 'use strict';
-/* globals fmt, showToast, getUserBalance, setUserBalance, activeHunt, state, save, bhWarn, getAuthClient, currentUser, isCloudUser, isCurrentUserAdmin, recordGameSession, queueCloudGameSession */
+/* globals fmt, showToast, getUserBalance, setUserBalance, activeHunt, state, save, bhWarn, getAuthClient, currentUser, isCloudUser, isCurrentUserAdmin, recordGameSession, queueCloudGameSession, casinoSfx */
 
-// ROUE DU DEPOT : entiers N,00 ; règle selon le max de plage (pas de décimales dans la valeur).
-// Variables d'état (déplacées ici depuis mini-jeux.js lors de la Passe 2)
+// SLOT DU DEPOT : entiers N,00 ; règle selon le max de plage (pas de décimales dans la valeur).
+// Le tirage reste 1 valeur parmi 10 ; le visuel est une machine à sous : les
+// 3 rouleaux défilent puis s'arrêtent un par un sur la même valeur (jackpot).
 let depositWheelValues = [];
 let depositWheelSelected = -1;
-let depositWheelSpinRotation = 0;
 let depositWheelSpinning = false;
+
+const DEP_SLOT_CELL_H = 64;   // hauteur d'une cellule de rouleau (synchro avec le CSS)
+const DEP_SLOT_REPS = 9;      // répétitions de la liste des 10 valeurs dans chaque bande
 
 function depositWheelSetResult(msg) {
   document.querySelectorAll('.dep-result').forEach((el) => {
@@ -91,51 +94,53 @@ function depositWheelRender() {
     });
   });
 }
+/** Position translateY (px) pour centrer la cellule `cellIdx` sur la payline (3 lignes visibles). */
+function depSlotOffsetFor(cellIdx) {
+  return -(cellIdx * DEP_SLOT_CELL_H) + DEP_SLOT_CELL_H;
+}
+/** (Re)construit les 3 bandes de rouleau. Nom historique conservé : appelé par mini-jeux.js. */
 function depositWheelSyncRouletteVisual() {
-  depositWheelSpinRotation = 0;
   depositWheelSpinning = false;
   document.querySelectorAll('.deposit-wheel-wrap').forEach((wrap) => {
-    const disc = wrap.querySelector('.deposit-roulette-disc');
-    const stage = wrap.querySelector('.deposit-roulette-stage');
-    if (!disc || !stage) return;
-    disc.style.transition = 'none';
-    disc.style.transform = 'rotate(0deg)';
-    void disc.offsetHeight;
-    disc.style.transition = '';
-    if (!depositWheelValues.length) {
-      disc.innerHTML = '';
-      disc.style.background = 'linear-gradient(180deg, rgba(14,22,38,0.95), rgba(8,14,24,0.98))';
-      stage.classList.add('deposit-roulette-stage--empty');
-      return;
-    }
-    stage.classList.remove('deposit-roulette-stage--empty');
-    const c0 = 'rgba(38,62,98,0.97)';
-    const c1 = 'rgba(16,28,48,0.99)';
-    /* 0° = haut (12h), sens horaire — aligné sur rotate(i*36+18) des labels (pas de from -90deg). */
-    let gradient = 'conic-gradient(from 0deg';
-    for (let i = 0; i < 10; i += 1) {
-      gradient += `, ${i % 2 === 0 ? c0 : c1} ${i * 36}deg ${(i + 1) * 36}deg`;
-    }
-    gradient += ')';
-    disc.style.background = gradient;
-    const labels = document.createElement('div');
-    labels.className = 'deposit-roulette-labels';
-    const r = 118;
-    for (let i = 0; i < 10; i += 1) {
-      const v = Number(depositWheelValues[i] || 0);
-      const txt = v > 0 ? depositWheelDisplay(v) : '—';
-      const ang = i * 36 + 18;
-      const el = document.createElement('div');
-      el.className = 'deposit-roulette-slice-txt';
-      el.style.transform = `rotate(${ang}deg) translateY(-${r}px)`;
-      const span = document.createElement('span');
-      span.textContent = txt;
-      span.style.transform = `rotate(${-ang}deg)`;
-      el.appendChild(span);
-      labels.appendChild(el);
-    }
-    disc.innerHTML = '';
-    disc.appendChild(labels);
+    const stage = wrap.querySelector('.deposit-slot-stage');
+    if (!stage) return;
+    const hasValues = depositWheelValues.length === 10;
+    stage.classList.toggle('deposit-slot-stage--empty', !hasValues);
+    stage.classList.remove('deposit-slot-stage--win');
+    stage.querySelectorAll('.deposit-slot-reel').forEach((reel, r) => {
+      const strip = reel.querySelector('.deposit-slot-strip');
+      if (!strip) return;
+      reel.classList.remove('stopped', 'spinning');
+      strip.style.transition = 'none';
+      strip.innerHTML = '';
+      if (!hasValues) {
+        for (let k = 0; k < 3; k += 1) {
+          const cell = document.createElement('div');
+          cell.className = 'deposit-slot-cell';
+          cell.textContent = '—';
+          strip.appendChild(cell);
+        }
+        strip.style.transform = 'translateY(0px)';
+        return;
+      }
+      // Bande = la liste des 10 valeurs répétée, chaque rouleau démarre
+      // sur un décalage différent pour un rendu vivant.
+      for (let rep = 0; rep < DEP_SLOT_REPS; rep += 1) {
+        for (let i = 0; i < 10; i += 1) {
+          const cell = document.createElement('div');
+          cell.className = 'deposit-slot-cell';
+          cell.textContent = depositWheelDisplay(depositWheelValues[i]);
+          cell.dataset.valIdx = String(i);
+          strip.appendChild(cell);
+        }
+      }
+      // Départ sur la 2e occurrence : garantit une cellule visible au-dessus
+      // et en dessous de la payline (pas de bande vide).
+      const startIdx = 10 + (depositWheelSelected >= 0 ? depositWheelSelected : (r * 3) % 10);
+      strip.style.transform = `translateY(${depSlotOffsetFor(startIdx)}px)`;
+      void strip.offsetHeight;
+      strip.style.transition = '';
+    });
   });
 }
 function depositWheelGenerate() {
@@ -162,82 +167,103 @@ function depositWheelGenerate() {
   depositWheelSelected = -1;
   depositWheelRender();
   depositWheelSyncRouletteVisual();
-  depositWheelSetResult('Roue générée. Lance pour tirer une case.');
+  depositWheelSetResult('Machine prête. Lance les rouleaux !');
 }
 function depositWheelSpin() {
-  const pairs = [];
-  document.querySelectorAll('.deposit-wheel-wrap').forEach((wrap) => {
-    const disc = wrap.querySelector('.deposit-roulette-disc');
-    const stage = wrap.querySelector('.deposit-roulette-stage');
-    if (disc && stage) pairs.push({ disc, stage });
-  });
   if (!depositWheelValues.length) {
     depositWheelGenerate();
     if (!depositWheelValues.length) return;
   }
   if (depositWheelSpinning) return;
-  if (!pairs.length) {
-    const idx0 = Math.floor(Math.random() * 10);
-    depositWheelSelected = idx0;
+
+  const stages = [...document.querySelectorAll('.deposit-wheel-wrap .deposit-slot-stage')];
+  const idx = Math.floor(Math.random() * 10);
+  const value = Number(depositWheelValues[idx] || 0);
+
+  if (!stages.length) {
+    depositWheelSelected = idx;
     depositWheelRender();
-    const value0 = Number(depositWheelValues[idx0] || 0);
-    depositWheelSetResult(`Case tirée: ${depositWheelDisplay(value0)}. « Go dépôt » ouvre Gamdom, ou relance la roue.`);
-    playGameSfx('roulette', 'start');
+    depositWheelSetResult(`Montant tiré : ${depositWheelDisplay(value)}. « Go dépôt » ouvre Gamdom, ou relance.`);
+    if (typeof casinoSfx === 'function') casinoSfx('spin');
     return;
   }
-  const idx = Math.floor(Math.random() * 10);
-  const seg = 36;
-  const jitter = (Math.random() - 0.5) * 14;
-  const centerDeg = idx * seg + seg / 2 + jitter;
-  const currentRem = ((depositWheelSpinRotation % 360) + 360) % 360;
-  const targetRem = ((-centerDeg % 360) + 360) % 360;
-  let delta = (targetRem - currentRem + 360) % 360;
-  const fullSpins = 6 + Math.floor(Math.random() * 4);
-  delta += fullSpins * 360;
-  if (delta < 360 * 4) delta += 360;
+
   depositWheelSpinning = true;
-  pairs.forEach(({ stage }) => stage.classList.add('deposit-roulette-stage--spinning'));
   depositWheelSelected = -1;
   depositWheelRender();
-  depositWheelSetResult('La roue tourne…');
-  playGameSfx('roulette', 'start');
-  const dur = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.85 : 5.2;
-  const ease = 'cubic-bezier(0.08, 0.72, 0.12, 1)';
-  depositWheelSpinRotation += delta;
-  pairs.forEach(({ disc }) => {
-    disc.style.transition = `transform ${dur}s ${ease}`;
-  });
-  requestAnimationFrame(() => {
-    pairs.forEach(({ disc }) => {
-      disc.style.transform = `rotate(${depositWheelSpinRotation}deg)`;
-    });
-  });
-  const leadDisc = pairs[0].disc;
-  let spinFinished = false;
-  let fallbackTimer = 0;
-  const leadTe = (e) => {
-    if (e.propertyName !== 'transform') return;
-    finishSpin();
-  };
-  const finishSpin = () => {
-    if (spinFinished) return;
-    spinFinished = true;
-    window.clearTimeout(fallbackTimer);
-    leadDisc.removeEventListener('transitionend', leadTe);
-    pairs.forEach(({ stage }) => stage.classList.remove('deposit-roulette-stage--spinning'));
+  // Repart d'une bande propre (positions de départ variées) avant d'animer.
+  depositWheelSyncRouletteVisual();
+  depositWheelSpinning = true;
+  depositWheelSetResult('Les rouleaux tournent…');
+
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Arrêts échelonnés : rouleau 1, puis 2, puis 3.
+  const durations = reduced ? [0.4, 0.7, 1.0] : [1.7, 2.9, 4.2];
+  const ease = 'cubic-bezier(0.16, 0.84, 0.22, 1)';
+
+  if (typeof casinoSfx === 'function') {
+    casinoSfx('spin');
+    // Tics qui décélèrent jusqu'à l'arrêt du dernier rouleau.
+    if (!reduced) {
+      const totalMs = durations[2] * 1000 - 300;
+      for (let i = 0; i < 30; i += 1) {
+        const t = Math.pow(i / 30, 1.6) * totalMs;
+        setTimeout(() => { if (depositWheelSpinning) casinoSfx('tick', { pitch: 1.1 - (i / 30) * 0.35 }); }, t);
+      }
+    }
+  }
+
+  let stopsRemaining = 0;
+  const allDone = () => {
     depositWheelSpinning = false;
     depositWheelSelected = idx;
     depositWheelRender();
-    const value = Number(depositWheelValues[idx] || 0);
-    depositWheelSetResult(`Case tirée: ${depositWheelDisplay(value)}. « Go dépôt » ouvre Gamdom, ou relance la roue.`);
+    stages.forEach((stage) => stage.classList.add('deposit-slot-stage--win'));
+    depositWheelSetResult(`Montant tiré : ${depositWheelDisplay(value)}. « Go dépôt » ouvre Gamdom, ou relance.`);
+    if (typeof casinoSfx === 'function') casinoSfx('cashout');
   };
-  leadDisc.addEventListener('transitionend', leadTe);
-  fallbackTimer = window.setTimeout(finishSpin, dur * 1000 + 550);
+
+  stages.forEach((stage) => {
+    stage.classList.remove('deposit-slot-stage--win');
+    stage.querySelectorAll('.deposit-slot-reel').forEach((reel, r) => {
+      const strip = reel.querySelector('.deposit-slot-strip');
+      if (!strip) return;
+      stopsRemaining += 1;
+      reel.classList.add('spinning');
+      reel.classList.remove('stopped');
+      // Le rouleau r s'arrête sur l'occurrence (4 + 2r) de la valeur cible :
+      // plus le rouleau est à droite, plus il défile longtemps.
+      const targetCell = (3 + r * 2) * 10 + idx;
+      const dur = durations[r];
+      strip.style.transition = `transform ${dur}s ${ease}`;
+      requestAnimationFrame(() => {
+        strip.style.transform = `translateY(${depSlotOffsetFor(targetCell)}px)`;
+      });
+      let done = false;
+      const finishReel = () => {
+        if (done) return;
+        done = true;
+        window.clearTimeout(fb);
+        strip.removeEventListener('transitionend', onEnd);
+        reel.classList.remove('spinning');
+        reel.classList.add('stopped');
+        if (typeof casinoSfx === 'function') casinoSfx('chip');
+        stopsRemaining -= 1;
+        if (stopsRemaining <= 0) allDone();
+      };
+      const onEnd = (e) => { if (e.propertyName === 'transform') finishReel(); };
+      strip.addEventListener('transitionend', onEnd);
+      const fb = window.setTimeout(finishReel, dur * 1000 + 450);
+    });
+  });
+
+  // Sécurité : si aucun rouleau trouvé dans les stages (DOM inattendu)
+  if (stopsRemaining === 0) allDone();
 }
 function initDepositWheel() {
   depositWheelValues = [];
   depositWheelSelected = -1;
   depositWheelRender();
   depositWheelSyncRouletteVisual();
-  depositWheelSetResult('Génère ta roue pour commencer.');
+  depositWheelSetResult('Génère tes 10 montants pour commencer.');
 }
