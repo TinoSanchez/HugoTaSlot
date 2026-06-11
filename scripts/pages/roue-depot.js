@@ -98,6 +98,52 @@ function depositWheelRender() {
 function depSlotOffsetFor(cellIdx) {
   return -(cellIdx * DEP_SLOT_CELL_H) + DEP_SLOT_CELL_H;
 }
+/** Index aléatoire parmi les 10 montants (exclut optionnellement certains indices). */
+function depSlotPickRandomIdx(exclude) {
+  const skip = exclude instanceof Set ? exclude : new Set();
+  const pool = [];
+  for (let i = 0; i < depositWheelValues.length; i += 1) {
+    if (!skip.has(i)) pool.push(i);
+  }
+  if (!pool.length) return Math.floor(Math.random() * depositWheelValues.length);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+function depSlotAppendCell(strip, valIdx) {
+  const cell = document.createElement('div');
+  cell.className = 'deposit-slot-cell';
+  cell.textContent = depositWheelDisplay(depositWheelValues[valIdx]);
+  cell.dataset.valIdx = String(valIdx);
+  strip.appendChild(cell);
+}
+/**
+ * Construit une bande de rouleau avec symboles aléatoires.
+ * Seule la cellule payline (winIdx) est fixée ; au-dessus et en dessous
+ * = montants tirés au hasard, différents du gain et entre eux.
+ */
+function depSlotBuildRandomStrip(strip, paylineCellIdx, winIdx) {
+  strip.innerHTML = '';
+  const total = DEP_SLOT_REPS * 10;
+  for (let c = 0; c < total; c += 1) {
+    let valIdx;
+    if (paylineCellIdx >= 0 && c === paylineCellIdx) {
+      valIdx = winIdx;
+    } else if (paylineCellIdx >= 0 && c === paylineCellIdx - 1) {
+      valIdx = depSlotPickRandomIdx(new Set([winIdx]));
+    } else if (paylineCellIdx >= 0 && c === paylineCellIdx + 1) {
+      const above = Number(strip.children[paylineCellIdx - 1]?.dataset?.valIdx);
+      const exclude = new Set([winIdx]);
+      if (Number.isFinite(above)) exclude.add(above);
+      valIdx = depSlotPickRandomIdx(exclude);
+    } else {
+      valIdx = depSlotPickRandomIdx(null);
+    }
+    depSlotAppendCell(strip, valIdx);
+  }
+}
+/** Index de la cellule payline pour un rouleau (plus à droite = plus loin dans la bande). */
+function depSlotPaylineCellForReel(reelIndex) {
+  return (3 + reelIndex * 2) * 10 + Math.floor(Math.random() * 10);
+}
 /** (Re)construit les 3 bandes de rouleau. Nom historique conservé : appelé par mini-jeux.js. */
 function depositWheelSyncRouletteVisual() {
   depositWheelSpinning = false;
@@ -123,21 +169,12 @@ function depositWheelSyncRouletteVisual() {
         strip.style.transform = 'translateY(0px)';
         return;
       }
-      // Bande = la liste des 10 valeurs répétée, chaque rouleau démarre
-      // sur un décalage différent pour un rendu vivant.
-      for (let rep = 0; rep < DEP_SLOT_REPS; rep += 1) {
-        for (let i = 0; i < 10; i += 1) {
-          const cell = document.createElement('div');
-          cell.className = 'deposit-slot-cell';
-          cell.textContent = depositWheelDisplay(depositWheelValues[i]);
-          cell.dataset.valIdx = String(i);
-          strip.appendChild(cell);
-        }
-      }
-      // Départ sur la 2e occurrence : garantit une cellule visible au-dessus
-      // et en dessous de la payline (pas de bande vide).
-      const startIdx = 10 + (depositWheelSelected >= 0 ? depositWheelSelected : (r * 3) % 10);
-      strip.style.transform = `translateY(${depSlotOffsetFor(startIdx)}px)`;
+      const paylineCell = 10 + ((r * 3) % 10);
+      const winIdx = depositWheelSelected >= 0
+        ? depositWheelSelected
+        : depSlotPickRandomIdx(null);
+      depSlotBuildRandomStrip(strip, paylineCell, winIdx);
+      strip.style.transform = `translateY(${depSlotOffsetFor(paylineCell)}px)`;
       void strip.offsetHeight;
       strip.style.transition = '';
     });
@@ -191,9 +228,6 @@ function depositWheelSpin() {
   depositWheelSpinning = true;
   depositWheelSelected = -1;
   depositWheelRender();
-  // Repart d'une bande propre (positions de départ variées) avant d'animer.
-  depositWheelSyncRouletteVisual();
-  depositWheelSpinning = true;
   depositWheelSetResult('Les rouleaux tournent…');
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -231,13 +265,18 @@ function depositWheelSpin() {
       stopsRemaining += 1;
       reel.classList.add('spinning');
       reel.classList.remove('stopped');
-      // Le rouleau r s'arrête sur l'occurrence (4 + 2r) de la valeur cible :
-      // plus le rouleau est à droite, plus il défile longtemps.
-      const targetCell = (3 + r * 2) * 10 + idx;
+      // Bande aléatoire : seul le centre (payline) = montant tiré ;
+      // au-dessus / en dessous = symboles aléatoires distincts par rouleau.
+      const paylineCell = depSlotPaylineCellForReel(r);
+      strip.style.transition = 'none';
+      depSlotBuildRandomStrip(strip, paylineCell, idx);
+      const startCell = Math.max(0, paylineCell - (18 + r * 6));
+      strip.style.transform = `translateY(${depSlotOffsetFor(startCell)}px)`;
+      void strip.offsetHeight;
       const dur = durations[r];
       strip.style.transition = `transform ${dur}s ${ease}`;
       requestAnimationFrame(() => {
-        strip.style.transform = `translateY(${depSlotOffsetFor(targetCell)}px)`;
+        strip.style.transform = `translateY(${depSlotOffsetFor(paylineCell)}px)`;
       });
       let done = false;
       const finishReel = () => {
