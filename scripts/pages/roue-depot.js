@@ -144,15 +144,72 @@ function depSlotBuildRandomStrip(strip, paylineCellIdx, winIdx) {
 function depSlotPaylineCellForReel(reelIndex) {
   return (3 + reelIndex * 2) * 10 + Math.floor(Math.random() * 10);
 }
+/** Retire overlay jackpot, classes et marquage des cellules gagnantes. */
+function depSlotClearJackpotFx(stage) {
+  if (!stage) return;
+  stage.classList.remove('deposit-slot-stage--win', 'deposit-slot-stage--jackpot');
+  stage.querySelectorAll('.deposit-slot-cell--jackpot').forEach((c) => {
+    c.classList.remove('deposit-slot-cell--jackpot');
+  });
+  const machine = stage.querySelector('.deposit-slot-machine');
+  if (machine) machine.querySelectorAll('.deposit-slot-jp-overlay').forEach((el) => el.remove());
+  const marquee = stage.querySelector('.deposit-slot-marquee span');
+  if (marquee) marquee.textContent = 'DÉPÔT';
+}
+/** Célébration jackpot : flashs, bannière, étincelles, pulse sur la payline. */
+function depSlotPlayJackpotFx(stage, value) {
+  if (!stage) return;
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  stage.classList.add('deposit-slot-stage--win');
+  if (!reduced) stage.classList.add('deposit-slot-stage--jackpot');
+
+  stage.querySelectorAll('.deposit-slot-reel').forEach((reel) => {
+    const pi = Number(reel.dataset.depPayline);
+    const strip = reel.querySelector('.deposit-slot-strip');
+    const center = strip?.children?.[pi];
+    if (center) center.classList.add('deposit-slot-cell--jackpot');
+  });
+
+  const machine = stage.querySelector('.deposit-slot-machine');
+  if (machine && !reduced) {
+    const sparks = [];
+    for (let i = 0; i < 28; i += 1) {
+      const x = (8 + Math.random() * 84).toFixed(0);
+      const y = (5 + Math.random() * 90).toFixed(0);
+      const d = (Math.random() * 0.55).toFixed(2);
+      const s = (0.5 + Math.random() * 1.1).toFixed(2);
+      sparks.push(`<span class="deposit-slot-jp-spark" style="--jx:${x}%;--jy:${y}%;--jd:${d}s;--js:${s}"></span>`);
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'deposit-slot-jp-overlay';
+    overlay.innerHTML = `
+      <div class="deposit-slot-jp-flash" aria-hidden="true"></div>
+      <div class="deposit-slot-jp-flash deposit-slot-jp-flash--2" aria-hidden="true"></div>
+      <div class="deposit-slot-jp-ring" aria-hidden="true"></div>
+      <div class="deposit-slot-jp-banner">JACKPOT</div>
+      <div class="deposit-slot-jp-amount">${depositWheelDisplay(value)}</div>
+      <div class="deposit-slot-jp-sparks">${sparks.join('')}</div>`;
+    machine.appendChild(overlay);
+    window.setTimeout(() => overlay.classList.add('deposit-slot-jp-overlay--fade'), 2200);
+    window.setTimeout(() => { try { overlay.remove(); } catch (_) {} }, 3200);
+  }
+
+  const marquee = stage.querySelector('.deposit-slot-marquee span');
+  if (marquee) marquee.textContent = '★ JACKPOT ★';
+  if (!reduced) {
+    window.setTimeout(() => stage.classList.remove('deposit-slot-stage--jackpot'), 2800);
+    window.setTimeout(() => { if (marquee) marquee.textContent = 'DÉPÔT'; }, 3200);
+  }
+}
 /** (Re)construit les 3 bandes de rouleau. Nom historique conservé : appelé par mini-jeux.js. */
 function depositWheelSyncRouletteVisual() {
   depositWheelSpinning = false;
   document.querySelectorAll('.deposit-wheel-wrap').forEach((wrap) => {
     const stage = wrap.querySelector('.deposit-slot-stage');
     if (!stage) return;
+    depSlotClearJackpotFx(stage);
     const hasValues = depositWheelValues.length === 10;
     stage.classList.toggle('deposit-slot-stage--empty', !hasValues);
-    stage.classList.remove('deposit-slot-stage--win');
     stage.querySelectorAll('.deposit-slot-reel').forEach((reel, r) => {
       const strip = reel.querySelector('.deposit-slot-strip');
       if (!strip) return;
@@ -252,13 +309,13 @@ function depositWheelSpin() {
     depositWheelSpinning = false;
     depositWheelSelected = idx;
     depositWheelRender();
-    stages.forEach((stage) => stage.classList.add('deposit-slot-stage--win'));
-    depositWheelSetResult(`Montant tiré : ${depositWheelDisplay(value)}. « Go dépôt » ouvre Gamdom, ou relance.`);
-    if (typeof casinoSfx === 'function') casinoSfx('cashout');
+    stages.forEach((stage) => depSlotPlayJackpotFx(stage, value));
+    depositWheelSetResult(`🎰 JACKPOT — ${depositWheelDisplay(value)} ! « Go dépôt » ouvre Gamdom, ou relance.`);
+    if (typeof casinoSfx === 'function') casinoSfx('bigwin');
   };
 
   stages.forEach((stage) => {
-    stage.classList.remove('deposit-slot-stage--win');
+    depSlotClearJackpotFx(stage);
     stage.querySelectorAll('.deposit-slot-reel').forEach((reel, r) => {
       const strip = reel.querySelector('.deposit-slot-strip');
       if (!strip) return;
@@ -268,6 +325,7 @@ function depositWheelSpin() {
       // Bande aléatoire : seul le centre (payline) = montant tiré ;
       // au-dessus / en dessous = symboles aléatoires distincts par rouleau.
       const paylineCell = depSlotPaylineCellForReel(r);
+      reel.dataset.depPayline = String(paylineCell);
       strip.style.transition = 'none';
       depSlotBuildRandomStrip(strip, paylineCell, idx);
       const startCell = Math.max(0, paylineCell - (18 + r * 6));

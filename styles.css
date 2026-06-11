@@ -2472,9 +2472,21 @@
     animation: depSlotLightChase 0.9s ease-in-out infinite;
   }
   .deposit-slot-stage--win .deposit-slot-lights span:nth-child(odd) { animation-delay: 0.45s; }
+  .deposit-slot-stage--jackpot .deposit-slot-lights span {
+    animation: depSlotLightJackpot 0.35s ease-in-out infinite;
+    box-shadow: 0 0 14px rgba(255,201,60,1), 0 0 24px rgba(0,255,140,0.5);
+  }
+  .deposit-slot-stage--jackpot .deposit-slot-lights span:nth-child(odd) {
+    background: #00FF8C;
+    animation-delay: 0.175s;
+  }
   @keyframes depSlotLightChase {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.25; }
+  }
+  @keyframes depSlotLightJackpot {
+    0%, 100% { opacity: 1; transform: scale(1.15); }
+    50% { opacity: 0.35; transform: scale(0.85); }
   }
   .deposit-slot-reels {
     position: relative;
@@ -2547,13 +2559,190 @@
     border-color: var(--gold-true);
     box-shadow: 0 0 20px rgba(255,201,60,0.35);
   }
-  .deposit-slot-stage--win .deposit-slot-cell {
+  .deposit-slot-stage--jackpot .deposit-slot-machine {
+    overflow: visible;
+    animation: depSlotMachineShake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    border-color: rgba(255,201,60,0.85);
+    box-shadow:
+      0 0 0 2px rgba(255,201,60,0.35),
+      0 0 48px rgba(255,201,60,0.45),
+      0 0 80px rgba(0,220,110,0.25),
+      0 18px 48px rgba(0,0,0,0.55);
+  }
+  .deposit-slot-stage--jackpot .deposit-slot-marquee span {
     color: #FFE9A8;
-    text-shadow: 0 0 16px rgba(255,201,60,0.8);
+    border-color: rgba(255,201,60,0.7);
+    background: rgba(255,201,60,0.15);
+    text-shadow: 0 0 20px rgba(255,201,60,0.95);
+    animation: depSlotMarqueePulse 0.6s ease-in-out infinite;
+  }
+  @keyframes depSlotMachineShake {
+    0%, 100% { transform: translateX(0); }
+    12% { transform: translateX(-4px) rotate(-0.4deg); }
+    24% { transform: translateX(4px) rotate(0.4deg); }
+    36% { transform: translateX(-3px); }
+    48% { transform: translateX(3px); }
+    60% { transform: translateX(-2px); }
+    72% { transform: translateX(2px); }
+  }
+  @keyframes depSlotMarqueePulse {
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.06); filter: brightness(1.35); }
+  }
+  .deposit-slot-stage--jackpot .deposit-slot-reel {
+    border-color: #FFC93C;
+    box-shadow: 0 0 28px rgba(255,201,60,0.55), inset 0 0 20px rgba(255,201,60,0.08);
+    animation: depSlotReelPulse 0.45s ease-in-out infinite;
+  }
+  .deposit-slot-stage--jackpot .deposit-slot-reel:nth-child(2) { animation-delay: 0.12s; }
+  .deposit-slot-stage--jackpot .deposit-slot-reel:nth-child(3) { animation-delay: 0.24s; }
+  @keyframes depSlotReelPulse {
+    0%, 100% { box-shadow: 0 0 28px rgba(255,201,60,0.55), inset 0 0 20px rgba(255,201,60,0.08); }
+    50% { box-shadow: 0 0 42px rgba(255,201,60,0.85), inset 0 0 28px rgba(255,201,60,0.18); }
+  }
+  .deposit-slot-cell--jackpot {
+    color: #FFF8DC !important;
+    font-size: 28px !important;
+    text-shadow:
+      0 0 8px rgba(255,255,255,0.9),
+      0 0 22px rgba(255,201,60,1),
+      0 0 40px rgba(255,201,60,0.6) !important;
+    animation: depSlotCellJackpot 0.5s ease-in-out infinite;
+    position: relative;
+    z-index: 2;
+  }
+  @keyframes depSlotCellJackpot {
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.08); filter: brightness(1.4); }
+  }
+  .deposit-slot-stage--jackpot .deposit-slot-payline {
+    border-top-color: rgba(255,201,60,0.95);
+    border-bottom-color: rgba(255,201,60,0.95);
+    box-shadow:
+      0 0 24px rgba(255,201,60,0.55) inset,
+      0 0 30px rgba(255,201,60,0.35);
+    animation: depSlotPaylineFlash 0.4s ease-in-out infinite;
+  }
+  @keyframes depSlotPaylineFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  /* Overlay jackpot injecté par JS */
+  .deposit-slot-jp-overlay {
+    position: absolute;
+    inset: -8px;
+    z-index: 20;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 18px;
+  }
+  .deposit-slot-jp-overlay--fade {
+    opacity: 0;
+    transition: opacity 0.9s ease;
+  }
+  .deposit-slot-jp-flash {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 45%, rgba(255,201,60,0.55) 0%, rgba(255,201,60,0.12) 35%, transparent 65%);
+    animation: depJpFlashBurst 0.7s ease-out forwards;
+  }
+  .deposit-slot-jp-flash--2 {
+    animation-delay: 0.35s;
+    background: radial-gradient(circle at 50% 50%, rgba(0,255,140,0.35) 0%, transparent 55%);
+  }
+  @keyframes depJpFlashBurst {
+    0% { opacity: 0; transform: scale(0.6); }
+    25% { opacity: 1; transform: scale(1.15); }
+    100% { opacity: 0; transform: scale(1.4); }
+  }
+  .deposit-slot-jp-ring {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 120%; height: 120%;
+    margin: -60% 0 0 -60%;
+    border-radius: 50%;
+    border: 3px solid rgba(255,201,60,0.7);
+    box-shadow: 0 0 40px rgba(255,201,60,0.5);
+    animation: depJpRingExpand 1.1s ease-out forwards;
+  }
+  @keyframes depJpRingExpand {
+    0% { opacity: 1; transform: scale(0.3); }
+    100% { opacity: 0; transform: scale(1.35); }
+  }
+  .deposit-slot-jp-banner {
+    position: absolute;
+    left: 50%; top: 18%;
+    transform: translateX(-50%) scale(0.3);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 800;
+    font-size: 34px;
+    letter-spacing: 10px;
+    color: #FFE9A8;
+    padding: 6px 22px;
+    border: 2px solid rgba(255,201,60,0.8);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(255,201,60,0.35), rgba(0,0,0,0.5));
+    text-shadow: 0 0 24px rgba(255,201,60,1), 0 2px 8px rgba(0,0,0,0.8);
+    box-shadow: 0 0 50px rgba(255,201,60,0.45);
+    white-space: nowrap;
+    animation: depJpBannerIn 0.65s cubic-bezier(0.18, 1.35, 0.36, 1) forwards;
+  }
+  @keyframes depJpBannerIn {
+    0% { opacity: 0; transform: translateX(-50%) scale(2.2); filter: blur(8px); }
+    40% { opacity: 1; transform: translateX(-50%) scale(0.92); filter: blur(0); }
+    60% { transform: translateX(-50%) scale(1.08); }
+    100% { opacity: 1; transform: translateX(-50%) scale(1); }
+  }
+  .deposit-slot-jp-amount {
+    position: absolute;
+    left: 50%; top: 72%;
+    transform: translateX(-50%) translateY(20px);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 800;
+    font-size: 42px;
+    color: var(--gold-true);
+    text-shadow: 0 0 28px var(--gold-true-glow), 0 4px 12px rgba(0,0,0,0.7);
+    opacity: 0;
+    animation: depJpAmountIn 0.8s 0.25s cubic-bezier(0.18, 1.25, 0.36, 1) forwards;
+  }
+  @keyframes depJpAmountIn {
+    0% { opacity: 0; transform: translateX(-50%) translateY(28px) scale(0.5); }
+    50% { opacity: 1; transform: translateX(-50%) translateY(-4px) scale(1.12); }
+    100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  }
+  .deposit-slot-jp-sparks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .deposit-slot-jp-spark {
+    position: absolute;
+    left: var(--jx, 50%);
+    top: var(--jy, 50%);
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #FFF8DC, #FFC93C 55%, #9A6E0E);
+    box-shadow: 0 0 10px rgba(255,201,60,0.9);
+    transform: scale(var(--js, 1));
+    animation: depJpSparkPop 1.2s var(--jd, 0s) ease-out forwards;
+  }
+  @keyframes depJpSparkPop {
+    0% { opacity: 0; transform: scale(0); }
+    15% { opacity: 1; }
+    100% { opacity: 0; transform: scale(calc(var(--js, 1) * 1.8)) translateY(-40px); }
+  }
+  .deposit-slot-stage--win .deposit-slot-cell:not(.deposit-slot-cell--jackpot) {
+    color: rgba(237,242,239,0.45);
+    text-shadow: none;
   }
   @media (prefers-reduced-motion: reduce) {
     .deposit-slot-reel.spinning .deposit-slot-strip { filter: none; }
     .deposit-slot-stage--win .deposit-slot-lights span { animation: none; }
+    .deposit-slot-stage--jackpot .deposit-slot-machine,
+    .deposit-slot-stage--jackpot .deposit-slot-reel,
+    .deposit-slot-cell--jackpot,
+    .deposit-slot-stage--jackpot .deposit-slot-payline { animation: none; }
+    .deposit-slot-jp-overlay { display: none; }
   }
 
   /* Plinko */
