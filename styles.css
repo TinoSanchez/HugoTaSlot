@@ -2438,6 +2438,8 @@
       inset 0 1px 0 rgba(255,255,255,0.06);
   }
   .deposit-slot-marquee {
+    position: relative;
+    z-index: 2;
     text-align: center;
     margin-bottom: 8px;
   }
@@ -2455,6 +2457,8 @@
     background: rgba(0,220,110,0.07);
   }
   .deposit-slot-lights {
+    position: relative;
+    z-index: 2;
     display: flex;
     justify-content: space-between;
     padding: 0 6px;
@@ -2490,6 +2494,7 @@
   }
   .deposit-slot-reels {
     position: relative;
+    z-index: 2;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
@@ -2569,12 +2574,21 @@
       0 0 80px rgba(0,220,110,0.25),
       0 18px 48px rgba(0,0,0,0.55);
   }
-  .deposit-slot-stage--jackpot .deposit-slot-marquee span {
+  .deposit-slot-marquee--jackpot span {
+    font-size: 30px;
+    letter-spacing: 10px;
+    padding: 6px 24px;
+    border: 2px solid rgba(255,201,60,0.8);
     color: #FFE9A8;
-    border-color: rgba(255,201,60,0.7);
-    background: rgba(255,201,60,0.15);
-    text-shadow: 0 0 20px rgba(255,201,60,0.95);
-    animation: depSlotMarqueePulse 0.6s ease-in-out infinite;
+    background: linear-gradient(135deg, rgba(255,201,60,0.32), rgba(0,0,0,0.45));
+    text-shadow: 0 0 24px rgba(255,201,60,1), 0 2px 8px rgba(0,0,0,0.8);
+    box-shadow: 0 0 40px rgba(255,201,60,0.4);
+    animation: depJpMarqueeIn 0.55s cubic-bezier(0.18, 1.35, 0.36, 1) forwards,
+               depSlotMarqueePulse 0.7s 0.55s ease-in-out infinite;
+  }
+  @keyframes depJpMarqueeIn {
+    0% { opacity: 0; transform: scale(1.8); filter: blur(6px); }
+    100% { opacity: 1; transform: scale(1); filter: blur(0); }
   }
   @keyframes depSlotMachineShake {
     0%, 100% { transform: translateX(0); }
@@ -2600,20 +2614,18 @@
     0%, 100% { box-shadow: 0 0 28px rgba(255,201,60,0.55), inset 0 0 20px rgba(255,201,60,0.08); }
     50% { box-shadow: 0 0 42px rgba(255,201,60,0.85), inset 0 0 28px rgba(255,201,60,0.18); }
   }
-  .deposit-slot-cell--jackpot {
+  .deposit-slot-stage--win .deposit-slot-cell--jackpot {
     color: #FFF8DC !important;
-    font-size: 28px !important;
     text-shadow:
       0 0 8px rgba(255,255,255,0.9),
-      0 0 22px rgba(255,201,60,1),
-      0 0 40px rgba(255,201,60,0.6) !important;
-    animation: depSlotCellJackpot 0.5s ease-in-out infinite;
+      0 0 18px rgba(255,201,60,0.95) !important;
+    animation: depSlotCellBlink 0.55s ease-in-out infinite;
     position: relative;
     z-index: 2;
   }
-  @keyframes depSlotCellJackpot {
-    0%, 100% { transform: scale(1); filter: brightness(1); }
-    50% { transform: scale(1.08); filter: brightness(1.4); }
+  @keyframes depSlotCellBlink {
+    0%, 100% { opacity: 1; filter: brightness(1.25); }
+    50% { opacity: 0.3; filter: brightness(0.65); }
   }
   .deposit-slot-stage--jackpot .deposit-slot-payline {
     border-top-color: rgba(255,201,60,0.95);
@@ -2631,7 +2643,7 @@
   .deposit-slot-jp-overlay {
     position: absolute;
     inset: -8px;
-    z-index: 20;
+    z-index: 0;
     pointer-events: none;
     overflow: hidden;
     border-radius: 18px;
@@ -2668,47 +2680,6 @@
   @keyframes depJpRingExpand {
     0% { opacity: 1; transform: scale(0.3); }
     100% { opacity: 0; transform: scale(1.35); }
-  }
-  .deposit-slot-jp-banner {
-    position: absolute;
-    left: 50%; top: 18%;
-    transform: translateX(-50%) scale(0.3);
-    font-family: 'Rajdhani', sans-serif;
-    font-weight: 800;
-    font-size: 34px;
-    letter-spacing: 10px;
-    color: #FFE9A8;
-    padding: 6px 22px;
-    border: 2px solid rgba(255,201,60,0.8);
-    border-radius: 999px;
-    background: linear-gradient(135deg, rgba(255,201,60,0.35), rgba(0,0,0,0.5));
-    text-shadow: 0 0 24px rgba(255,201,60,1), 0 2px 8px rgba(0,0,0,0.8);
-    box-shadow: 0 0 50px rgba(255,201,60,0.45);
-    white-space: nowrap;
-    animation: depJpBannerIn 0.65s cubic-bezier(0.18, 1.35, 0.36, 1) forwards;
-  }
-  @keyframes depJpBannerIn {
-    0% { opacity: 0; transform: translateX(-50%) scale(2.2); filter: blur(8px); }
-    40% { opacity: 1; transform: translateX(-50%) scale(0.92); filter: blur(0); }
-    60% { transform: translateX(-50%) scale(1.08); }
-    100% { opacity: 1; transform: translateX(-50%) scale(1); }
-  }
-  .deposit-slot-jp-amount {
-    position: absolute;
-    left: 50%; top: 72%;
-    transform: translateX(-50%) translateY(20px);
-    font-family: 'Rajdhani', sans-serif;
-    font-weight: 800;
-    font-size: 42px;
-    color: var(--gold-true);
-    text-shadow: 0 0 28px var(--gold-true-glow), 0 4px 12px rgba(0,0,0,0.7);
-    opacity: 0;
-    animation: depJpAmountIn 0.8s 0.25s cubic-bezier(0.18, 1.25, 0.36, 1) forwards;
-  }
-  @keyframes depJpAmountIn {
-    0% { opacity: 0; transform: translateX(-50%) translateY(28px) scale(0.5); }
-    50% { opacity: 1; transform: translateX(-50%) translateY(-4px) scale(1.12); }
-    100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
   }
   .deposit-slot-jp-sparks {
     position: absolute;

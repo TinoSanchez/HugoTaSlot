@@ -153,11 +153,13 @@ function depSlotClearJackpotFx(stage) {
   });
   const machine = stage.querySelector('.deposit-slot-machine');
   if (machine) machine.querySelectorAll('.deposit-slot-jp-overlay').forEach((el) => el.remove());
-  const marquee = stage.querySelector('.deposit-slot-marquee span');
+  const marqueeWrap = stage.querySelector('.deposit-slot-marquee');
+  if (marqueeWrap) marqueeWrap.classList.remove('deposit-slot-marquee--jackpot');
+  const marquee = marqueeWrap?.querySelector('span');
   if (marquee) marquee.textContent = 'DÉPÔT';
 }
-/** Célébration jackpot : flashs, bannière, étincelles, pulse sur la payline. */
-function depSlotPlayJackpotFx(stage, value) {
+/** Célébration jackpot : marquee JACKPOT, flashs, étincelles, clignotement des 3 cases gagnantes. */
+function depSlotPlayJackpotFx(stage, _value) {
   if (!stage) return;
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   stage.classList.add('deposit-slot-stage--win');
@@ -170,10 +172,15 @@ function depSlotPlayJackpotFx(stage, value) {
     if (center) center.classList.add('deposit-slot-cell--jackpot');
   });
 
+  const marqueeWrap = stage.querySelector('.deposit-slot-marquee');
+  const marquee = marqueeWrap?.querySelector('span');
+  if (marqueeWrap) marqueeWrap.classList.add('deposit-slot-marquee--jackpot');
+  if (marquee) marquee.textContent = 'JACKPOT';
+
   const machine = stage.querySelector('.deposit-slot-machine');
   if (machine && !reduced) {
     const sparks = [];
-    for (let i = 0; i < 28; i += 1) {
+    for (let i = 0; i < 20; i += 1) {
       const x = (8 + Math.random() * 84).toFixed(0);
       const y = (5 + Math.random() * 90).toFixed(0);
       const d = (Math.random() * 0.55).toFixed(2);
@@ -186,19 +193,14 @@ function depSlotPlayJackpotFx(stage, value) {
       <div class="deposit-slot-jp-flash" aria-hidden="true"></div>
       <div class="deposit-slot-jp-flash deposit-slot-jp-flash--2" aria-hidden="true"></div>
       <div class="deposit-slot-jp-ring" aria-hidden="true"></div>
-      <div class="deposit-slot-jp-banner">JACKPOT</div>
-      <div class="deposit-slot-jp-amount">${depositWheelDisplay(value)}</div>
       <div class="deposit-slot-jp-sparks">${sparks.join('')}</div>`;
     machine.appendChild(overlay);
     window.setTimeout(() => overlay.classList.add('deposit-slot-jp-overlay--fade'), 2200);
     window.setTimeout(() => { try { overlay.remove(); } catch (_) {} }, 3200);
   }
 
-  const marquee = stage.querySelector('.deposit-slot-marquee span');
-  if (marquee) marquee.textContent = '★ JACKPOT ★';
   if (!reduced) {
     window.setTimeout(() => stage.classList.remove('deposit-slot-stage--jackpot'), 2800);
-    window.setTimeout(() => { if (marquee) marquee.textContent = 'DÉPÔT'; }, 3200);
   }
 }
 /** (Re)construit les 3 bandes de rouleau. Nom historique conservé : appelé par mini-jeux.js. */
