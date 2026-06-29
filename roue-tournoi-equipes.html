@@ -207,40 +207,80 @@
             color: #00ff80;
         }
 
-        .bracket { display: flex; flex-direction: column; gap: 18px; }
-        .bracket-round { background: #1f1f29; border-radius: 12px; padding: 12px; border: 1px solid #2d2d3d; }
+        .bracket-section {
+            width: 100%;
+            max-width: 1700px;
+            margin: 30px auto 0;
+            background: #1c1c24;
+            border: 2px solid #2d2d3d;
+            border-radius: 16px;
+            padding: 20px;
+            box-sizing: border-box;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.7);
+        }
+        .bracket-heading { color: #00ff80; margin: 0 0 4px; }
+        .bracket-sub { font-size: 0.85em; color: #aaa; margin: 0 0 16px; }
+        .bracket-empty { color: #aaa; font-size: 0.9em; text-align: center; font-style: italic; padding: 30px; }
+        .bracket-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 14px; }
+        .bracket {
+            position: relative;
+            display: flex;
+            align-items: stretch;
+            gap: 46px;
+            min-width: min-content;
+            padding: 6px;
+        }
+        .bracket-conn {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 0;
+            overflow: visible;
+        }
+        .bracket-round {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            gap: 16px;
+            width: 240px;
+            flex: 0 0 240px;
+            position: relative;
+            z-index: 1;
+        }
         .round-title {
             color: #ffd700;
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: 1px;
-            font-size: 0.95em;
-            margin-bottom: 12px;
+            font-size: 0.85em;
             text-align: center;
+            margin-bottom: 4px;
         }
         .match {
             background: #181820;
-            border-radius: 10px;
-            padding: 10px;
-            margin-bottom: 12px;
             border: 1px solid #33334a;
+            border-radius: 10px;
+            padding: 8px;
+            position: relative;
+            z-index: 1;
         }
-        .match:last-child { margin-bottom: 0; }
         .match-vs {
             text-align: center;
             color: #ff1493;
             font-weight: 900;
             letter-spacing: 2px;
-            margin: 8px 0;
-            font-size: 0.9em;
+            margin: 6px 0;
+            font-size: 0.8em;
         }
         .match-team {
             border-radius: 8px;
-            padding: 8px 10px;
+            padding: 7px 9px;
             border: 1px solid #3a3a4f;
             background: #252533;
             transition: 0.2s;
         }
+        .match-team + .match-team { margin-top: 6px; }
         .match-team.is-winner {
             border-color: #00ff80;
             box-shadow: 0 0 12px rgba(0,255,128,0.3);
@@ -252,25 +292,26 @@
             font-style: italic;
             text-align: center;
             color: #888;
-            padding: 14px 10px;
+            padding: 14px 9px;
         }
         .match-team-head {
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-weight: 800;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             gap: 8px;
         }
-        .match-team-name { font-size: 0.95em; }
-        .match-team-total { color: #00ff80; white-space: nowrap; }
+        .match-team-name { font-size: 0.9em; }
+        .match-team-total { color: #00ff80; white-space: nowrap; font-size: 0.9em; }
         .winner-badge {
             color: #00ff80;
-            font-size: 0.72em;
+            font-size: 0.7em;
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
+        .bye-tag { color: #ffd700; font-size: 0.72em; font-weight: 800; text-transform: uppercase; }
         .member-row {
             display: flex;
             align-items: center;
@@ -280,37 +321,47 @@
         }
         .member-row:last-child { margin-bottom: 0; }
         .member-name {
-            font-size: 0.88em;
+            font-size: 0.85em;
             color: #ddd;
-            max-width: 150px;
+            max-width: 120px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
         .gain-input {
-            width: 70px;
+            width: 60px;
             background: #111116;
             border: 1px solid #44445c;
             color: #00ff80;
-            padding: 5px;
+            padding: 4px;
             border-radius: 6px;
             text-align: center;
             font-weight: bold;
-            font-size: 0.95em;
+            font-size: 0.9em;
         }
         .gain-input:focus { outline: none; border-color: #00ff80; }
+        .champion-col {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 230px;
+            flex: 0 0 230px;
+            position: relative;
+            z-index: 1;
+        }
         .champion-banner {
-            margin-top: 4px;
-            padding: 16px;
-            border-radius: 12px;
+            padding: 18px;
+            border-radius: 14px;
             text-align: center;
             font-weight: 900;
-            font-size: 1.15em;
+            font-size: 1.1em;
             color: #111;
             background: linear-gradient(135deg, #ffd700, #ff8c00);
-            box-shadow: 0 0 20px rgba(255,215,0,0.5);
+            box-shadow: 0 0 22px rgba(255,215,0,0.55);
             border: 2px solid #fff;
         }
+        .champion-trophy { font-size: 2.4em; line-height: 1; }
         .script-credit {
             display: inline-flex;
             align-items: center;
@@ -392,11 +443,14 @@ Joueur 8</textarea>
             <ul id="teamsList"></ul>
         </div>
 
-        <div class="score-box" style="width: 520px;">
-            <h3 style="color: #00ff80; margin-top: 0;">🏆 Bracket du Tournoi</h3>
-            <p style="font-size: 0.8em; color: #aaa; margin-top: 0;">Saisis le gain de chaque joueur : le total le plus élevé fait gagner l'équipe, qui monte au tour suivant.</p>
-            <div id="bracketContainer" style="max-height: 560px; overflow-y: auto; padding-right: 5px;">
-                <p style="color: #aaa; font-size: 0.9em; text-align: center; font-style: italic;">Le bracket s'affichera une fois toutes les équipes formées.</p>
+    </div>
+
+    <div class="bracket-section">
+        <h2 class="bracket-heading">🏆 Bracket du Tournoi</h2>
+        <p class="bracket-sub">Saisis le gain de chaque joueur : le total le plus élevé fait gagner l'équipe, qui monte au tour suivant. Finale à 2 ou 3 équipes selon le nombre de participants (ex. 12 joueurs → 6 équipes → finale à 3).</p>
+        <div class="bracket-scroll">
+            <div id="bracketContainer">
+                <p class="bracket-empty">Le bracket s'affichera une fois toutes les équipes formées.</p>
             </div>
         </div>
     </div>
@@ -416,6 +470,7 @@ Joueur 8</textarea>
         let startAngle = 0;
         let teams = [];        // { id, name, members:[...], style }
         let matchGains = {};   // matchGains[matchId][teamId][memberIdx] = valeur
+        let lastRounds = null;
         const canvas = document.getElementById("wheelCanvas");
         const ctx = canvas.getContext("2d");
 
@@ -635,53 +690,82 @@ Joueur 8</textarea>
             return team.members.some((_, idx) => g[idx] !== undefined && g[idx] !== '');
         }
 
-        function matchWinner(m) {
-            if (!m.a && !m.b) return null;
-            if (m.a && !m.b) return m.a;
-            if (m.b && !m.a) return m.b;
-            const ta = teamTotal(m.id, m.a);
-            const tb = teamTotal(m.id, m.b);
-            const touched = matchHasGains(m.id, m.a) || matchHasGains(m.id, m.b);
-            if (!touched || ta === tb) return null;
-            return ta > tb ? m.a : m.b;
+        function matchWinnerTeam(m) {
+            const present = m.slots.map((s) => s.team).filter(Boolean);
+            if (m.isBye) return m.slots[0]?.team || null;
+            if (present.length < m.slots.length || present.length < 2) return null;
+            const touched = present.some((t) => matchHasGains(m.id, t));
+            if (!touched) return null;
+            let best = null;
+            let bestVal = -Infinity;
+            let tie = false;
+            present.forEach((t) => {
+                const v = teamTotal(m.id, t);
+                if (v > bestVal) { bestVal = v; best = t; tie = false; }
+                else if (v === bestVal) { tie = true; }
+            });
+            return tie ? null : best;
         }
 
-        function computeRounds() {
+        function buildRounds() {
             const rounds = [];
-            let participants = teams.slice();
+            let slots = teams.map((t) => ({ team: t }));
             let r = 0;
-            while (participants.length > 1 && r < 12) {
+            while (slots.length > 1 && r < 16) {
+                const n = slots.length;
+                if (n === 2 || n === 3) {
+                    const m = { id: `r${r}final`, round: r, slots: slots.slice(), isFinal: true };
+                    rounds.push({ round: r, matches: [m], isFinal: true });
+                    break;
+                }
                 const matches = [];
-                for (let i = 0; i < participants.length; i += 2) {
-                    matches.push({
-                        id: `r${r}m${i / 2}`,
-                        a: participants[i] || null,
-                        b: participants[i + 1] || null,
-                        round: r,
-                    });
+                for (let i = 0; i < n; i += 2) {
+                    if (i + 1 < n) {
+                        matches.push({ id: `r${r}m${i / 2}`, round: r, slots: [slots[i], slots[i + 1]] });
+                    } else {
+                        matches.push({ id: `r${r}bye${i}`, round: r, slots: [slots[i]], isBye: true });
+                    }
                 }
                 rounds.push({ round: r, matches });
-                participants = matches.map((m) => matchWinner(m));
+                slots = matches.map((m) => ({ fromMatch: m, team: matchWinnerTeam(m) }));
                 r += 1;
             }
-            return { rounds, champion: participants.length === 1 ? participants[0] : null };
-        }
 
-        function roundLabel(roundIdx, totalRounds, matchCount) {
-            if (matchCount === 1) return 'Finale';
-            if (roundIdx === 0) return 'Tour 1';
-            return `Tour ${roundIdx + 1}`;
-        }
-
-        function teamPanelHtml(m, team, otherTeam, winner) {
-            if (!team) {
-                return `<div class="match-team tbd">À déterminer</div>`;
+            let champion = null;
+            if (rounds.length && rounds[rounds.length - 1].isFinal) {
+                champion = matchWinnerTeam(rounds[rounds.length - 1].matches[0]);
+            } else if (teams.length === 1) {
+                champion = teams[0];
             }
+            return { rounds, champion };
+        }
+
+        function roundLabel(round) {
+            if (round.isFinal) {
+                return round.matches[0].slots.length === 3 ? 'Finale · 3 équipes' : 'Finale';
+            }
+            return `Tour ${round.round + 1}`;
+        }
+
+        function teamPanelHtml(m, slot, winner) {
+            const team = slot.team;
+            if (!team) return `<div class="match-team tbd">À déterminer</div>`;
+
             const isWinner = winner && winner.id === team.id;
-            const isLoser = winner && otherTeam && winner.id === otherTeam.id;
-            const total = teamTotal(m.id, team);
+            const isLoser = winner && !isWinner;
             const color = team.style?.text || '#fff';
 
+            if (m.isBye) {
+                return `
+                    <div class="match-team is-winner">
+                        <div class="match-team-head">
+                            <span class="match-team-name" style="color:${color};">${team.name}</span>
+                            <span class="bye-tag">Qualifié</span>
+                        </div>
+                    </div>`;
+            }
+
+            const total = teamTotal(m.id, team);
             let rows = '';
             team.members.forEach((member, idx) => {
                 const stored = (matchGains[m.id] && matchGains[m.id][team.id] && matchGains[m.id][team.id][idx]) ?? '';
@@ -712,34 +796,41 @@ Joueur 8</textarea>
             const container = document.getElementById('bracketContainer');
             if (!container) return;
             if (!teams.length) {
-                container.innerHTML = '<p style="color:#aaa;font-size:0.9em;text-align:center;font-style:italic;">Le bracket s\'affichera une fois toutes les équipes formées.</p>';
+                container.innerHTML = '<p class="bracket-empty">Le bracket s\'affichera une fois toutes les équipes formées.</p>';
+                lastRounds = null;
                 return;
             }
 
             const focusKey = document.activeElement?.dataset?.gainKey || null;
+            const { rounds, champion } = buildRounds();
+            lastRounds = rounds;
 
-            const { rounds, champion } = computeRounds();
-            let html = '<div class="bracket">';
+            let html = '<div class="bracket"><svg class="bracket-conn" xmlns="http://www.w3.org/2000/svg"></svg>';
 
             rounds.forEach((round) => {
                 html += `<div class="bracket-round">`;
-                html += `<div class="round-title">${roundLabel(round.round, rounds.length, round.matches.length)}</div>`;
+                html += `<div class="round-title">${roundLabel(round)}</div>`;
                 round.matches.forEach((m) => {
-                    const winner = matchWinner(m);
-                    html += `<div class="match">`;
-                    html += teamPanelHtml(m, m.a, m.b, winner);
-                    html += `<div class="match-vs">VS</div>`;
-                    html += teamPanelHtml(m, m.b, m.a, winner);
+                    const winner = matchWinnerTeam(m);
+                    html += `<div class="match" data-match-id="${m.id}">`;
+                    m.slots.forEach((slot, i) => {
+                        html += teamPanelHtml(m, slot, winner);
+                        if (!m.isBye && i < m.slots.length - 1) html += `<div class="match-vs">VS</div>`;
+                    });
                     html += `</div>`;
                 });
                 html += `</div>`;
             });
 
+            html += `<div class="champion-col">`;
             if (champion) {
-                html += `<div class="champion-banner">🏆 VAINQUEUR : ${champion.name} 🏆<br><span style="font-size:0.8em;font-weight:700;">${champion.members.join(' & ')}</span></div>`;
+                html += `<div class="champion-banner" data-champion="1"><div class="champion-trophy">🏆</div>VAINQUEUR<br>${champion.name}<br><span style="font-size:0.75em;font-weight:700;">${champion.members.join(' & ')}</span></div>`;
+            } else {
+                html += `<div class="champion-banner" data-champion="1" style="background:#252533;color:#888;border-color:#33334a;box-shadow:none;"><div class="champion-trophy" style="opacity:0.4;">🏆</div>?</div>`;
             }
-
+            html += `</div>`;
             html += '</div>';
+
             container.innerHTML = html;
 
             if (focusKey) {
@@ -751,6 +842,53 @@ Joueur 8</textarea>
                     again.value = v;
                 }
             }
+
+            requestAnimationFrame(() => drawConnectors(container, rounds));
+        }
+
+        function drawConnectors(container, rounds) {
+            const bracket = container.querySelector('.bracket');
+            const svg = container.querySelector('.bracket-conn');
+            if (!bracket || !svg) return;
+
+            const bRect = bracket.getBoundingClientRect();
+            const W = bracket.scrollWidth;
+            const H = bracket.scrollHeight;
+            svg.setAttribute('width', W);
+            svg.setAttribute('height', H);
+            svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+            const boxFor = (sel) => {
+                const el = bracket.querySelector(sel);
+                if (!el) return null;
+                const r = el.getBoundingClientRect();
+                return { x: r.left - bRect.left, y: r.top - bRect.top, w: r.width, h: r.height };
+            };
+
+            const elbow = (c, p) => {
+                if (!c || !p) return '';
+                const x1 = c.x + c.w;
+                const y1 = c.y + c.h / 2;
+                const x2 = p.x;
+                const y2 = p.y + p.h / 2;
+                const mx = x1 + (x2 - x1) / 2;
+                return `<path d="M ${x1} ${y1} H ${mx} V ${y2} H ${x2}" fill="none" stroke="#4a4a66" stroke-width="2"/>`;
+            };
+
+            let paths = '';
+            rounds.forEach((round) => round.matches.forEach((m) => {
+                m.slots.forEach((slot) => {
+                    if (!slot.fromMatch) return;
+                    paths += elbow(boxFor(`[data-match-id="${slot.fromMatch.id}"]`), boxFor(`[data-match-id="${m.id}"]`));
+                });
+            }));
+
+            if (rounds.length) {
+                const fm = rounds[rounds.length - 1].matches[rounds[rounds.length - 1].matches.length - 1];
+                paths += elbow(boxFor(`[data-match-id="${fm.id}"]`), boxFor('[data-champion="1"]'));
+            }
+
+            svg.innerHTML = paths;
         }
 
         function onGainInput(input) {
@@ -771,6 +909,11 @@ Joueur 8</textarea>
             const next = Math.max(0, cur + delta);
             setGain(matchId, teamId, idx, String(next));
         }
+
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('bracketContainer');
+            if (container && lastRounds) drawConnectors(container, lastRounds);
+        });
 
         drawWheel();
     </script>
