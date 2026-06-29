@@ -206,7 +206,7 @@ function depSlotPlayJackpotFx(stage, _value) {
 /** (Re)construit les 3 bandes de rouleau. Nom historique conservé : appelé par mini-jeux.js. */
 function depositWheelSyncRouletteVisual() {
   depositWheelSpinning = false;
-  document.querySelectorAll('.deposit-wheel-wrap').forEach((wrap) => {
+  document.querySelectorAll('.deposit-wheel-wrap:not(.choix-wheel-wrap)').forEach((wrap) => {
     const stage = wrap.querySelector('.deposit-slot-stage');
     if (!stage) return;
     depSlotClearJackpotFx(stage);
@@ -239,10 +239,20 @@ function depositWheelSyncRouletteVisual() {
     });
   });
 }
+function depSlotActiveRoot() {
+  const panel = document.getElementById('hunt-tab-depot');
+  if (panel && panel.classList.contains('active')) return panel;
+  const gw = document.getElementById('game-window');
+  const body = document.getElementById('game-window-body');
+  if (gw && body && !gw.classList.contains('hidden')) return body;
+  return panel || document;
+}
+
 /** Lit min/max en entiers ronds (pas de décimales). */
 function depSlotReadIntRange() {
-  const minEl = document.getElementById('dep-min');
-  const maxEl = document.getElementById('dep-max');
+  const root = depSlotActiveRoot();
+  const minEl = root.querySelector('#dep-min');
+  const maxEl = root.querySelector('#dep-max');
   const min = Math.max(1, Math.round(Number(minEl?.value || 0)));
   const max = Math.max(1, Math.round(Number(maxEl?.value || 0)));
   if (minEl) minEl.value = String(min);
@@ -250,8 +260,8 @@ function depSlotReadIntRange() {
   return { min, max, minEl, maxEl };
 }
 function depSlotBindIntInputs() {
-  ['dep-min', 'dep-max'].forEach((id) => {
-    const el = document.getElementById(id);
+  const root = depSlotActiveRoot();
+  root.querySelectorAll('#dep-min, #dep-max').forEach((el) => {
     if (!el || el.dataset.depIntBound === '1') return;
     el.dataset.depIntBound = '1';
     el.step = '1';
@@ -300,7 +310,7 @@ function depositWheelSpin() {
   }
   if (depositWheelSpinning) return;
 
-  const stages = [...document.querySelectorAll('.deposit-wheel-wrap .deposit-slot-stage')];
+  const stages = [...document.querySelectorAll('.deposit-wheel-wrap:not(.choix-wheel-wrap) .deposit-slot-stage')];
   const idx = Math.floor(Math.random() * 10);
   const value = Number(depositWheelValues[idx] || 0);
 
@@ -388,6 +398,8 @@ function depositWheelSpin() {
   if (stopsRemaining === 0) allDone();
 }
 function initDepositWheel() {
+  const panel = document.getElementById('hunt-tab-depot');
+  if (panel) panel.querySelectorAll('#dep-min, #dep-max').forEach((el) => { delete el.dataset.depIntBound; });
   depSlotBindIntInputs();
   depositWheelValues = [];
   depositWheelSelected = -1;
@@ -395,4 +407,3 @@ function initDepositWheel() {
   depositWheelSyncRouletteVisual();
   depositWheelSetResult('Génère tes 10 montants pour commencer.');
 }
-depSlotBindIntInputs();

@@ -21,13 +21,17 @@ const GAMES = [
 
 let currentGame = null;
 let gameInterval = null;
-let activeGameBalanceAnchor = null;
+if (!window.__hmStakePreview) window.__hmStakePreview = Object.create(null);
 // depositWheelValues, depositWheelSelected, depositWheelSpinning
 // → déclarés dans roue-depot.js (chargé lazily quand deposit_wheel est ouvert)
 
 function renderGamesLobby() {
   const grid = document.getElementById('games-lobby');
   if (!grid) return;
+  if (grid.children.length === GAMES.length) {
+    if (typeof updateLobbyBalance === 'function') updateLobbyBalance();
+    return;
+  }
   grid.innerHTML = GAMES.map((g, i) => `
     <div class="game-card stagger-in" style="animation-delay:${i * 38}ms" onclick="openGame('${g.id}')">
       <span class="game-card-icon"><img src="${g.icon}" class="ui-logo-icon" alt="${g.name}"></span>
@@ -37,16 +41,66 @@ function renderGamesLobby() {
   `).join('');
 }
 
+let gameSessionToken = 0;
+
+function refundPendingStakePreviews(gameId) {
+  const gameKey = String(gameId || currentGame?.id || '');
+  if (!gameKey) return;
+  const q = window.__hmStakePreview[gameKey];
+  if (!Array.isArray(q) || !q.length) return;
+  const total = q.reduce((acc, v) => acc + Math.max(0, Number(v) || 0), 0);
+  delete window.__hmStakePreview[gameKey];
+  if (total <= 0) return;
+  if (typeof isCloudUser === 'function' && isCloudUser() && currentUser) {
+    currentUser.balance = Math.max(0, Number(currentUser.balance || 0) + total);
+    if (typeof saveSession === 'function') saveSession(currentUser);
+    if (typeof renderProfileBadge === 'function') renderProfileBadge();
+  } else if (typeof setUserBalance === 'function') {
+    setUserBalance(Math.max(0, getUserBalance() + total));
+  }
+  if (typeof updateLobbyBalance === 'function') updateLobbyBalance();
+}
+
+function teardownActiveGame(opts = {}) {
+  const keepWindow = !!(opts && opts.keepWindow);
+  gameSessionToken += 1;
+  plinkoStopAutoFire();
+  if (typeof crashStopAnimation === 'function') crashStopAnimation();
+  if (typeof crashActive !== 'undefined') crashActive = false;
+  if (typeof limboRolling !== 'undefined') limboRolling = false;
+  if (gameInterval) { clearInterval(gameInterval); gameInterval = null; }
+  if (typeof miniBjSideBadgeTimer !== 'undefined' && miniBjSideBadgeTimer) {
+    clearTimeout(miniBjSideBadgeTimer);
+    miniBjSideBadgeTimer = null;
+  }
+  window._gameRoundLocks = Object.create(null);
+  if (currentGame?.id) refundPendingStakePreviews(currentGame.id);
+  const body = document.getElementById('game-window-body');
+  if (!keepWindow) {
+    if (body) body.innerHTML = '';
+    const gw = document.getElementById('game-window');
+    if (gw) {
+      gw.classList.add('hidden');
+      gw.removeAttribute('data-game');
+      gw.classList.remove('da-pro');
+    }
+  } else if (body) {
+    body.innerHTML = '';
+  }
+}
+
 function openGame(id) {
   if (!currentUser) {
     const guest = getGuestProfile();
     currentUser = { ...GUEST_USER, displayName: guest.displayName || GUEST_USER.username, avatar: guest.avatar || '', balance: getSafeGuestBalance(guest.balance), streak: Number(guest.streak || 0), lastClaimDay: guest.lastClaimDay ?? null };
     saveSession(currentUser);
   }
+  if (currentGame) teardownActiveGame({ keepWindow: true });
   currentGame = GAMES.find(g => g.id === id);
   if (!currentGame) return;
-  activeGameBalanceAnchor = Number(getUserBalance() || 0);
+  window.__hmGameBalAnchor = Number(getUserBalance() || 0);
   const win = document.getElementById('game-window');
+  if (win.parentElement !== document.body) document.body.appendChild(win);
   win.classList.add('da-pro');
   win.setAttribute('data-game', id);
   win.classList.remove('hidden');
@@ -57,16 +111,24 @@ function openGame(id) {
 }
 
 function closeGame() {
-  plinkoStopAutoFire();
-  const gw = document.getElementById('game-window');
-  gw.classList.add('hidden');
-  gw.removeAttribute('data-game');
-  if (gameInterval) { clearInterval(gameInterval); gameInterval = null; }
+  teardownActiveGame();
   currentGame = null;
-  activeGameBalanceAnchor = null;
+  window.__hmGameBalAnchor = null;
 }
 
-function getBet() { return Math.max(0.01, parseFloat(document.getElementById('bet-input').value) || 1); }
+function getBet() {
+  const raw = parseFloat(document.getElementById('bet-input')?.value);
+  if ((currentGame?.id || '') === 'blackjack') {
+    return Math.max(0, Number.isFinite(raw) ? raw : 0);
+  }
+  return Math.max(0.01, Number.isFinite(raw) ? raw : 1);
+}
+function getBjTableTotal() {
+  const main = Math.max(0, parseFloat(document.getElementById('bet-input')?.value || 0) || 0);
+  const pairs = Math.max(0, parseFloat(document.getElementById('mini-bj-side-pairs')?.value || 0) || 0);
+  const p213 = Math.max(0, parseFloat(document.getElementById('mini-bj-side-21p3')?.value || 0) || 0);
+  return main + pairs + p213;
+}
 function handleMainBetInput() {
   if ((currentGame?.id || '') !== 'roulette') return;
   syncRouletteChipFromBetInput();
@@ -83,13 +145,12 @@ function betHalf() { document.getElementById('bet-input').value = (getBet() / 2)
 function betDouble() { document.getElementById('bet-input').value = Math.min(getBet() * 2, getUserBalance()).toFixed(2); casinoSfx('chip'); }
 function betMax() { document.getElementById('bet-input').value = getUserBalance().toFixed(2); casinoSfx('chips'); }
 
-const pendingStakePreviewByGame = Object.create(null);
 function previewStakeDeduction(game, bet) {
   const gameKey = String(game || currentGame?.id || 'unknown');
   const stake = Math.max(0, Number(bet || 0));
   if (!gameKey || !Number.isFinite(stake) || stake <= 0) return false;
-  if (!Array.isArray(pendingStakePreviewByGame[gameKey])) pendingStakePreviewByGame[gameKey] = [];
-  pendingStakePreviewByGame[gameKey].push(stake);
+  if (!Array.isArray(window.__hmStakePreview[gameKey])) window.__hmStakePreview[gameKey] = [];
+  window.__hmStakePreview[gameKey].push(stake);
   if (isCloudUser()) {
     currentUser.balance = Math.max(0, Number(currentUser?.balance || 0) - stake);
     saveSession(currentUser);
@@ -103,9 +164,9 @@ function previewStakeDeduction(game, bet) {
 }
 function consumeStakePreview(game, fallbackBet) {
   const gameKey = String(game || currentGame?.id || 'unknown');
-  const queue = Array.isArray(pendingStakePreviewByGame[gameKey]) ? pendingStakePreviewByGame[gameKey] : [];
+  const queue = Array.isArray(window.__hmStakePreview[gameKey]) ? window.__hmStakePreview[gameKey] : [];
   const nextStake = Number(queue.length ? queue.shift() : 0);
-  if (!queue.length) delete pendingStakePreviewByGame[gameKey];
+  if (!queue.length) delete window.__hmStakePreview[gameKey];
   if (nextStake > 0) {
     return { hadPreview: true, stake: nextStake };
   }
@@ -113,13 +174,13 @@ function consumeStakePreview(game, fallbackBet) {
 }
 function resolveSettlementGameId(preferredGameId, bet) {
   const preferred = String(preferredGameId || '');
-  const hasPreferredQueue = preferred && Array.isArray(pendingStakePreviewByGame[preferred]) && pendingStakePreviewByGame[preferred].length > 0;
+  const hasPreferredQueue = preferred && Array.isArray(window.__hmStakePreview[preferred]) && window.__hmStakePreview[preferred].length > 0;
   if (hasPreferredQueue) return preferred;
-  const activeKeys = Object.keys(pendingStakePreviewByGame).filter((k) => Array.isArray(pendingStakePreviewByGame[k]) && pendingStakePreviewByGame[k].length > 0);
+  const activeKeys = Object.keys(window.__hmStakePreview).filter((k) => Array.isArray(window.__hmStakePreview[k]) && window.__hmStakePreview[k].length > 0);
   if (!activeKeys.length) return preferred || 'unknown';
   const targetBet = Math.max(0, Number(bet || 0));
   const byStakeMatch = activeKeys.find((k) => {
-    const first = Number((pendingStakePreviewByGame[k] || [])[0] || 0);
+    const first = Number((window.__hmStakePreview[k] || [])[0] || 0);
     return Math.abs(first - targetBet) < 0.0001;
   });
   if (byStakeMatch) return byStakeMatch;
@@ -187,7 +248,6 @@ function playGame() {
   if (!currentGame) return;
   loadGamePlay(currentGame.id).catch((e) => {
     pushRuntimeLog('warn', `play_game_failed:${String(e?.message || e || 'unknown')}`);
-    showCloudValidationToastThrottled();
   });
 }
 
@@ -195,6 +255,41 @@ function renderGameControls(id) {
   const ctrl = document.getElementById('game-controls');
   if (!ctrl) return;
   const playText = id === 'blackjack' ? 'Lancer une partie' : 'Lancer une partie';
+  if (id === 'blackjack') {
+    ctrl.innerHTML = `
+    <div class="gc-block">
+      <div class="gc-title">Balance disponible</div>
+      <div class="gc-value small"><span id="game-controls-balance">${fmtVirtual(getUserBalance())}</span></div>
+    </div>
+    <div class="gc-block bj-gc-hint">
+      <div class="gc-title">Mise sur la table</div>
+      <div class="gc-value small bj-gc-bet-total"><span id="bj-gc-main-total">0,00</span></div>
+      <div class="bj-gc-hint-txt">Place tes jetons · Rebet / ×2 / Effacer · puis DISTRIBUER</div>
+    </div>
+    <button class="play-btn" id="main-play-btn" type="button" onclick="playGame()">DISTRIBUER</button>
+    <div class="gc-block bj-bet-tools" id="bj-bet-tools">
+      <div class="gc-title">Raccourcis mise</div>
+      <div class="bj-bet-tools-row">
+        <button type="button" class="bet-btn bj-tool-btn" onclick="bjRebetLast()">↻ Rebet</button>
+        <button type="button" class="bet-btn bj-tool-btn" onclick="bjDoubleTableBets()">×2</button>
+        <button type="button" class="bet-btn bj-tool-btn" onclick="bjClearTable()">Effacer</button>
+      </div>
+    </div>
+    <div class="gc-block" id="bj-actions-side">
+      <div class="gc-title">Actions</div>
+      <div class="gc-actions-grid">
+        <button class="bet-btn gc-action-btn" id="bj-side-hit" onclick="miniBjHit()" disabled>Tirer</button>
+        <button class="bet-btn gc-action-btn" id="bj-side-stand" onclick="miniBjStand()" disabled>Rester</button>
+        <button class="bet-btn gc-action-btn" id="bj-side-split" onclick="miniBjSplit()" disabled>Diviser</button>
+        <button class="bet-btn gc-action-btn" id="bj-side-double" onclick="miniBjDouble()" disabled>Doubler</button>
+      </div>
+    </div>
+    <input type="hidden" id="bet-input" value="0">
+    <input type="hidden" id="mini-bj-side-pairs" value="0">
+    <input type="hidden" id="mini-bj-side-21p3" value="0">
+    `;
+    return;
+  }
   ctrl.innerHTML = `
     <div class="gc-block">
       <div class="gc-title">Balance disponible</div>
@@ -246,34 +341,57 @@ function loadGameUI(id) {
   const UIs = {
     blackjack: `<div class="antho-bj-stage">
       <button class="antho-bj-reset" onclick="loadGameUI('blackjack')" title="Reset">↻</button>
-      <div class="mini-bj-result" id="mini-bj-result">Clique Lancer une partie</div>
+      <div class="bj-phase-banner" id="bj-betting-phase">FAITES VOS JEUX</div>
+      <div class="mini-bj-result" id="mini-bj-result">Place tes jetons sur la table</div>
       <div class="mini-bj-side-badge" id="mini-bj-side-badge"></div>
       <div class="antho-bj-table">
-        <div class="antho-bj-seat">
+        <div class="antho-bj-seat antho-bj-seat--dealer">
           <div class="antho-bj-pill"><strong>Dealer</strong> <span class="score" id="antho-dealer-score">0</span></div>
           <div class="antho-bj-cards mini-bj-cards" id="mini-bj-dealer-cards"></div>
           <div class="mini-bj-total" id="mini-bj-dealer-total" style="display:none;">0</div>
         </div>
-        <div class="antho-bj-divider"></div>
-        <div class="antho-bj-seat">
+        <div class="bj-betting-zone">
+        <div class="bj-bet-spot bj-bet-spot--side" data-bet-target="pairs">
+          <span class="bj-bet-spot-label">PERFECT PAIRS</span>
+          <div class="bj-bet-spot-stack" id="bj-stack-pairs"></div>
+          <span class="bj-bet-spot-amt" id="bj-spot-pairs">0</span>
+        </div>
+        <div class="bj-bet-spot bj-bet-spot--main" data-bet-target="main">
+          <span class="bj-bet-spot-label">MISE PRINCIPALE</span>
+          <div class="bj-bet-spot-stack" id="bj-stack-main"></div>
+          <span class="bj-bet-spot-amt" id="bj-spot-main">0</span>
+        </div>
+        <div class="bj-bet-spot bj-bet-spot--side" data-bet-target="21p3">
+          <span class="bj-bet-spot-label">21+3</span>
+          <div class="bj-bet-spot-stack" id="bj-stack-21p3"></div>
+          <span class="bj-bet-spot-amt" id="bj-spot-21p3">0</span>
+        </div>
+      </div>
+      <div class="bj-insurance-bar" id="bj-insurance-bar">
+        <span class="bj-insurance-txt">Assurance ? Le croupier montre un As</span>
+        <button type="button" class="bj-insurance-btn take" onclick="bjResolveInsurance(true)">Assurer (½ mise)</button>
+        <button type="button" class="bj-insurance-btn skip" onclick="bjResolveInsurance(false)">Non merci</button>
+      </div>
+      <div class="bj-table-actions" id="bj-table-actions">
+        <button type="button" class="bj-tbl-act hit" id="bj-tbl-hit" onclick="miniBjHit()" disabled>TIRER</button>
+        <button type="button" class="bj-tbl-act stand" id="bj-tbl-stand" onclick="miniBjStand()" disabled>RESTER</button>
+        <button type="button" class="bj-tbl-act double" id="bj-tbl-double" onclick="miniBjDouble()" disabled>DOUBLER</button>
+        <button type="button" class="bj-tbl-act split" id="bj-tbl-split" onclick="miniBjSplit()" disabled>DIVISER</button>
+      </div>
+        <div class="antho-bj-seat antho-bj-seat--player">
           <div class="antho-bj-pill"><strong>${escapeHtml(currentUser?.displayName || currentUser?.username || 'Joueur')}</strong> <span class="score" id="antho-player-score">0</span></div>
           <div class="antho-bj-cards mini-bj-cards" id="mini-bj-player-cards"></div>
           <div class="mini-bj-total" id="mini-bj-player-total" style="display:none;">0</div>
         </div>
       </div>
+      <div class="bj-chip-rack-wrap">
+        <div class="bj-chip-rack" id="bj-chip-rack">${buildBjChipRackHtml()}</div>
+        <button type="button" class="bj-undo-chip-btn" id="bj-undo-chip-btn" onclick="undoLastBjChip()" disabled>↩ Annuler le dernier jeton</button>
+      </div>
+      <div class="bj-dealer-say" id="mini-bj-dealer-say">Bienvenue — fais tes jeux.</div>
+      <div class="bj-history-panel" id="mini-bj-history"></div>
       <button id="mini-bj-hit" style="display:none;" onclick="miniBjHit()"></button>
       <button id="mini-bj-stand" style="display:none;" onclick="miniBjStand()"></button>
-      <div id="bj-betting-phase" style="display:none;">FAITES VOS JEUX</div>
-      <div id="mini-bj-dealer-say" style="display:none;">Bienvenue</div>
-      <div id="mini-bj-history" style="display:none;"></div>
-      <div id="bj-chip-rack" style="display:none;"></div>
-      <button id="bj-undo-chip-btn" style="display:none;"></button>
-      <div id="bj-spot-main" style="display:none;">0</div>
-      <div id="bj-spot-pairs" style="display:none;">0</div>
-      <div id="bj-spot-21p3" style="display:none;">0</div>
-      <div id="bj-stack-main" style="display:none;"></div>
-      <div id="bj-stack-pairs" style="display:none;"></div>
-      <div id="bj-stack-21p3" style="display:none;"></div>
     </div>`,
 
     dice: `<div style="text-align:center;">
@@ -510,7 +628,7 @@ function loadGameUI(id) {
     renderGameHistory('roulette');
   }
   if (id === 'pump') { window._pumpMult = 1; window._pumpBet = 0; window._pumpActive = false; }
-  if (id === 'blackjack') document.getElementById('main-play-btn').textContent = 'Lancer une partie';
+  if (id === 'blackjack') document.getElementById('main-play-btn').textContent = 'DISTRIBUER';
   if (id === 'hilo') document.getElementById('main-play-btn').textContent = 'Lancer une partie';
   if (id === 'mines') document.getElementById('main-play-btn').textContent = 'Lancer une partie';
   if (id === 'limbo') document.getElementById('main-play-btn').textContent = 'Lancer une partie';
@@ -1160,9 +1278,20 @@ function plinkoPressClick(e) {
 }
 
 let miniBjState = null;
-let selectedBjChip = 0.5;
+const BJ_CHIP_DENOMS = [
+  { value: 10, tier: 'std' },
+  { value: 50, tier: 'std' },
+  { value: 100, tier: 'std' },
+  { value: 500, tier: 'std' },
+  { value: 1000, tier: 'std' },
+  { value: 2500, tier: 'vip' },
+  { value: 5000, tier: 'vip' },
+  { value: 10000, tier: 'vip' },
+];
+let selectedBjChip = 10;
 let bjBetHistory = [];
 let bjBettingOpen = true;
+let bjLastBetSnapshot = null;
 const GAME_HISTORY = { blackjack: [], roulette: [], crash: [], keno: [], mines: [], plinko: [], flip: [], dice: [], hilo: [], chicken: [], pump: [], limbo: [] };
 loadGameHistoryStore();
 function loadGameHistoryStore() {
@@ -1238,29 +1367,87 @@ function pushGameHistory(gameId, text) {
 }
 
 // playGameSfx → déplacé dans app.js pour être disponible sans dépendre du chargement de mini-jeux.js
+function formatBjChipLabel(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '10';
+  if (n >= 10000) return '10K';
+  if (n >= 1000 && n % 1000 === 0) return `${n / 1000}K`;
+  return String(n);
+}
+function buildBjChipFaceHtml(value, { compact = false } = {}) {
+  const denom = resolveBjChipDenom(value);
+  const meta = BJ_CHIP_DENOMS.find((c) => c.value === denom) || BJ_CHIP_DENOMS[0];
+  const label = formatBjChipLabel(denom);
+  const compactCls = compact ? ' bj-casino-chip-face--compact' : '';
+  const gdLogo = denom <= 10 ? './assets/gamdom-icon-transparent.png' : './assets/gamdom-logo-white-transparent.png';
+  return `<span class="bj-casino-chip-face bj-chip-${denom}${compactCls}" data-denom="${denom}" aria-hidden="true">
+    <span class="bj-chip-inner">
+      <span class="bj-chip-logos" aria-hidden="true">
+        <img class="bj-chip-logo bj-chip-logo--ht" src="./assets/bj-chip-hugotaslot.svg" alt="" draggable="false" decoding="async">
+        <img class="bj-chip-logo bj-chip-logo--19" src="./assets/19enplein-logo.png" alt="" draggable="false" decoding="async">
+        <img class="bj-chip-logo bj-chip-logo--gd" src="${gdLogo}" alt="" draggable="false" decoding="async">
+      </span>
+      <span class="bj-chip-val">${label}</span>
+      ${meta.tier === 'vip' ? '<span class="bj-chip-vip-mark" aria-hidden="true">★</span>' : ''}
+    </span>
+  </span>`;
+}
+function buildBjChipRackHtml() {
+  return BJ_CHIP_DENOMS.map((c, i) => `
+    <button type="button" class="bj-casino-chip bj-casino-chip--${c.tier}${i === 0 ? ' active' : ''}"
+      data-chip="${c.value}" draggable="true" title="Jeton ${c.value}"
+      onclick="selectBjChip(${c.value}, this); event.stopPropagation();" aria-label="Jeton ${c.value}">
+      ${buildBjChipFaceHtml(c.value)}
+    </button>
+  `).join('');
+}
+function resolveBjChipDenom(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return 10;
+  if (BJ_CHIP_DENOMS.some((c) => c.value === n)) return n;
+  const sorted = BJ_CHIP_DENOMS.map((c) => c.value).sort((a, b) => a - b);
+  return sorted.reduce((best, cur) => (Math.abs(cur - n) < Math.abs(best - n) ? cur : best), sorted[0]);
+}
+function animateBjChipToSpot(chipBtn, spotEl, amount) {
+  if (!chipBtn || !spotEl || !bjBettingOpen) return;
+  const from = chipBtn.getBoundingClientRect();
+  const to = spotEl.getBoundingClientRect();
+  const denom = resolveBjChipDenom(amount);
+  const isVip = denom >= 2500;
+  const size = isVip ? 48 : 42;
+  const fly = document.createElement('div');
+  fly.className = 'bj-chip-fly';
+  fly.style.width = `${size}px`;
+  fly.style.height = `${size}px`;
+  fly.style.left = `${from.left + from.width / 2 - size / 2}px`;
+  fly.style.top = `${from.top + from.height / 2 - size / 2}px`;
+  fly.innerHTML = buildBjChipFaceHtml(denom, { compact: true });
+  document.body.appendChild(fly);
+  const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+  const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+  requestAnimationFrame(() => {
+    fly.style.transform = `translate(${dx}px, ${dy}px) rotate(${(Math.random() * 16 - 8).toFixed(1)}deg) scale(0.9)`;
+    fly.classList.add('is-flying');
+  });
+  setTimeout(() => fly.remove(), 340);
+}
+
 function setDealerTalk(msg) {
   const el = document.getElementById('mini-bj-dealer-say');
   if (el) el.textContent = msg;
 }
 function selectBjChip(val, btn) {
-  selectedBjChip = Number(val) || 0.5;
-  document.querySelectorAll('.bj-chip').forEach(x => x.classList.remove('active'));
+  selectedBjChip = Number(val) || 10;
+  document.querySelectorAll('.bj-casino-chip').forEach((x) => x.classList.remove('active'));
   if (btn) btn.classList.add('active');
   casinoSfx('chip');
   refreshBjSpots();
 }
 function placeBjMainChip() {
-  const input = document.getElementById('bet-input');
-  if (!input) return;
-  input.value = (Math.max(0, parseFloat(input.value) || 0) + selectedBjChip).toFixed(2);
-  setDealerTalk(`Jeton principal de ${selectedBjChip} place.`);
+  addToBjBet('main', selectedBjChip);
 }
 function placeBjSideChip(kind) {
-  const id = kind === 'pairs' ? 'mini-bj-side-pairs' : 'mini-bj-side-21p3';
-  const input = document.getElementById(id);
-  if (!input) return;
-  input.value = (Math.max(0, parseFloat(input.value) || 0) + selectedBjChip).toFixed(2);
-  setDealerTalk(`Jeton side bet ${selectedBjChip} place.`);
+  addToBjBet(kind === 'pairs' ? 'pairs' : '21p3', selectedBjChip);
 }
 function refreshBjSpots() {
   const main = parseFloat(document.getElementById('bet-input')?.value || 0) || 0;
@@ -1269,40 +1456,67 @@ function refreshBjSpots() {
   const sMain = document.getElementById('bj-spot-main');
   const sPairs = document.getElementById('bj-spot-pairs');
   const s213 = document.getElementById('bj-spot-21p3');
-  if (sMain) sMain.textContent = main.toFixed(2);
-  if (sPairs) sPairs.textContent = pairs.toFixed(2);
-  if (s213) s213.textContent = p213.toFixed(2);
+  if (sMain) sMain.textContent = fmt(main);
+  if (sPairs) sPairs.textContent = fmt(pairs);
+  if (s213) s213.textContent = fmt(p213);
   renderBjSpotStack('main', main);
   renderBjSpotStack('pairs', pairs);
   renderBjSpotStack('21p3', p213);
+  const gcMain = document.getElementById('bj-gc-main-total');
+  if (gcMain) gcMain.textContent = fmt(getBjTableTotal());
   const undoBtn = document.getElementById('bj-undo-chip-btn');
   if (undoBtn) undoBtn.disabled = !bjBettingOpen || bjBetHistory.length === 0;
 }
 function addToBjBet(target, amount) {
-  if (!bjBettingOpen) { setDealerTalk('Jeux fermes. Attends la prochaine main.'); return; }
+  if (!bjBettingOpen) { setDealerTalk('Jeux fermés. Attends la prochaine main.'); return; }
   const val = Math.max(0, Number(amount) || 0);
   if (val <= 0) return;
+  const bal = getUserBalance();
+  const curMain = parseFloat(document.getElementById('bet-input')?.value || 0) || 0;
+  const curPairs = parseFloat(document.getElementById('mini-bj-side-pairs')?.value || 0) || 0;
+  const cur213 = parseFloat(document.getElementById('mini-bj-side-21p3')?.value || 0) || 0;
+  const nextTotal = curMain + curPairs + cur213 + val;
+  if (nextTotal > bal + 1e-9) {
+    showToast('Solde insuffisant pour ce jeton', 'error', 1800);
+    setDealerTalk('Pas assez de solde pour ce jeton.');
+    return;
+  }
   if (target === 'main') {
     const inp = document.getElementById('bet-input');
-    if (inp) inp.value = ((parseFloat(inp.value || 0) || 0) + val).toFixed(2);
+    if (inp) inp.value = (curMain + val).toFixed(2);
   } else if (target === 'pairs') {
     const inp = document.getElementById('mini-bj-side-pairs');
-    if (inp) inp.value = ((parseFloat(inp.value || 0) || 0) + val).toFixed(2);
+    if (inp) inp.value = (curPairs + val).toFixed(2);
   } else if (target === '21p3') {
     const inp = document.getElementById('mini-bj-side-21p3');
-    if (inp) inp.value = ((parseFloat(inp.value || 0) || 0) + val).toFixed(2);
+    if (inp) inp.value = (cur213 + val).toFixed(2);
   }
   bjBetHistory.push({ target, amount: val });
+  const spot = document.querySelector(`.bj-bet-spot[data-bet-target="${target}"]`);
+  const chipBtn = document.querySelector(`.bj-casino-chip[data-chip="${resolveBjChipDenom(val)}"]`) || document.querySelector('.bj-casino-chip.active');
+  animateBjChipToSpot(chipBtn, spot, val);
+  if (spot) {
+    spot.classList.add('chip-landed');
+    setTimeout(() => spot.classList.remove('chip-landed'), 280);
+  }
+  casinoSfx('chip');
+  setDealerTalk(`Jeton ${fmt(val)} placé.`);
   refreshBjSpots();
 }
 function setBjBettingOpen(open) {
   bjBettingOpen = !!open;
   const phase = document.getElementById('bj-betting-phase');
-  if (phase) phase.textContent = bjBettingOpen ? 'FAITES VOS JEUX' : 'JEUX FERMES';
-  document.querySelectorAll('#bj-chip-rack .bj-chip').forEach(el => { el.draggable = bjBettingOpen; el.style.opacity = bjBettingOpen ? '1' : '0.45'; });
-  document.querySelectorAll('.bj-bet-spot[data-bet-target]').forEach(el => {
+  if (phase) {
+    phase.textContent = bjBettingOpen ? 'FAITES VOS JEUX' : 'JEUX FERMÉS';
+    phase.classList.toggle('is-closed', !bjBettingOpen);
+  }
+  document.querySelectorAll('#bj-chip-rack .bj-casino-chip').forEach((el) => {
+    el.draggable = bjBettingOpen;
+    el.classList.toggle('is-locked', !bjBettingOpen);
+  });
+  document.querySelectorAll('.bj-bet-spot[data-bet-target]').forEach((el) => {
     el.style.pointerEvents = bjBettingOpen ? '' : 'none';
-    el.style.opacity = bjBettingOpen ? '1' : '0.62';
+    el.style.opacity = bjBettingOpen ? '1' : '0.55';
   });
   const undoBtn = document.getElementById('bj-undo-chip-btn');
   if (undoBtn) undoBtn.disabled = !bjBettingOpen || bjBetHistory.length === 0;
@@ -1318,46 +1532,75 @@ function undoLastBjChip() {
     const cur = parseFloat(inp.value || 0) || 0;
     inp.value = Math.max(0, cur - last.amount).toFixed(2);
   }
-  setDealerTalk(`Dernier jeton retire (${last.amount.toFixed(2)}).`);
+  setDealerTalk(`Dernier jeton retiré (${fmt(last.amount)}).`);
+  casinoSfx('chip');
   refreshBjSpots();
 }
 function renderBjSpotStack(target, amount) {
   const el = document.getElementById(`bj-stack-${target}`);
   if (!el) return;
-  const count = Math.min(12, Math.floor((amount + 0.001) / Math.max(0.5, selectedBjChip)));
-  const cls = selectedBjChip >= 25 ? 'v25' : selectedBjChip >= 10 ? 'v10' : selectedBjChip >= 5 ? 'v5' : selectedBjChip >= 1 ? 'v1' : 'v05';
-  el.innerHTML = Array.from({ length: count }).map(() => `<span class="bj-stack-chip ${cls}"></span>`).join('');
+  const chips = bjBetHistory.filter((h) => h.target === target);
+  if (!chips.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = chips.map((h, i) => `
+    <div class="bj-table-chip" style="--bj-stack-i:${i}; --bj-stack-rot:${(i * 5) % 15 - 7}deg">
+      ${buildBjChipFaceHtml(h.amount, { compact: true })}
+    </div>
+  `).join('');
 }
+let bjDragChipsBound = false;
 function initBjDragChips() {
-  const chips = Array.from(document.querySelectorAll('#bj-chip-rack .bj-chip'));
-  const spots = Array.from(document.querySelectorAll('.bj-bet-spot[data-bet-target]'));
-  chips.forEach(ch => {
-    ch.addEventListener('dragstart', (e) => {
-      const value = ch.getAttribute('data-chip') || '0';
+  const rack = document.getElementById('bj-chip-rack');
+  const stage = document.querySelector('.antho-bj-stage');
+  if (!rack || !stage) return;
+  if (!bjDragChipsBound) {
+    bjDragChipsBound = true;
+    document.addEventListener('dragstart', (e) => {
+      const ch = e.target && e.target.closest ? e.target.closest('#bj-chip-rack .bj-casino-chip') : null;
+      if (!ch || !bjBettingOpen) return;
+      const value = ch.getAttribute('data-chip') || '10';
       e.dataTransfer.setData('text/plain', value);
       selectBjChip(parseFloat(value), ch);
+      ch.classList.add('is-dragging');
     });
-  });
-  spots.forEach(spot => {
-    const target = spot.getAttribute('data-bet-target');
-    spot.addEventListener('dragover', (e) => { e.preventDefault(); spot.classList.add('drag-over'); });
-    spot.addEventListener('dragleave', () => spot.classList.remove('drag-over'));
-    spot.addEventListener('drop', (e) => {
+    document.addEventListener('dragend', (e) => {
+      const ch = e.target && e.target.closest ? e.target.closest('#bj-chip-rack .bj-casino-chip') : null;
+      if (ch) ch.classList.remove('is-dragging');
+    });
+    stage.addEventListener('click', (e) => {
+      const spot = e.target && e.target.closest ? e.target.closest('.bj-bet-spot[data-bet-target]') : null;
+      if (!spot || !bjBettingOpen) return;
+      if (e.target.closest('#bj-chip-rack')) return;
+      addToBjBet(spot.getAttribute('data-bet-target'), selectedBjChip);
+    });
+    stage.addEventListener('dragover', (e) => {
+      const spot = e.target && e.target.closest ? e.target.closest('.bj-bet-spot[data-bet-target]') : null;
+      if (!spot || !bjBettingOpen) return;
+      e.preventDefault();
+      spot.classList.add('drag-over');
+    });
+    stage.addEventListener('dragleave', (e) => {
+      const spot = e.target && e.target.closest ? e.target.closest('.bj-bet-spot[data-bet-target]') : null;
+      if (spot) spot.classList.remove('drag-over');
+    });
+    stage.addEventListener('drop', (e) => {
+      const spot = e.target && e.target.closest ? e.target.closest('.bj-bet-spot[data-bet-target]') : null;
+      if (!spot || !bjBettingOpen) return;
       e.preventDefault();
       spot.classList.remove('drag-over');
-      const value = parseFloat(e.dataTransfer.getData('text/plain') || '0');
-      addToBjBet(target, value);
-      setDealerTalk(`Mise ${value.toFixed(2)} acceptee sur ${target.toUpperCase()}.`);
+      const value = parseFloat(e.dataTransfer.getData('text/plain') || String(selectedBjChip));
+      addToBjBet(spot.getAttribute('data-bet-target'), value);
     });
-    spot.addEventListener('click', () => addToBjBet(target, selectedBjChip));
-  });
-  ['bet-input', 'mini-bj-side-pairs', 'mini-bj-side-21p3'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('input', refreshBjSpots);
-  });
+  }
   bjBetHistory = [];
+  selectedBjChip = 10;
+  document.querySelectorAll('.bj-casino-chip').forEach((el, i) => el.classList.toggle('active', i === 0));
   setBjBettingOpen(true);
   refreshBjSpots();
+  miniBjRefreshActions();
+  setDealerTalk('Choisis un jeton et place-le sur la table.');
 }
 
 const MINI_BJ_RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
@@ -1367,6 +1610,166 @@ const MINI_BJ_SUITS = [
   { key: 'spades', symbol: '♠', color: 'black' },
   { key: 'clubs', symbol: '♣', color: 'black' }
 ];
+function getBjSuitColor(suitKey) {
+  const hit = MINI_BJ_SUITS.find((s) => s.key === suitKey);
+  return hit ? hit.color : 'black';
+}
+function rankValueForPoker(rank) {
+  if (rank === 'A') return 14;
+  if (rank === 'K') return 13;
+  if (rank === 'Q') return 12;
+  if (rank === 'J') return 11;
+  return Number(rank) || 0;
+}
+function isPokerStraight(values) {
+  const v = [...values].sort((a, b) => a - b);
+  if (v.length !== 3) return false;
+  if (v[0] === 2 && v[1] === 3 && v[2] === 14) return true;
+  return v[2] - v[1] === 1 && v[1] - v[0] === 1;
+}
+function bjPerfectPairsReturn(card1, card2, stake) {
+  const r1 = miniBjCardRank(card1);
+  const r2 = miniBjCardRank(card2);
+  const s = Math.max(0, Number(stake || 0));
+  if (!r1 || r1 !== r2 || s <= 0) return { payout: 0, label: '' };
+  if (card1?.suit && card1.suit === card2?.suit) {
+    return { payout: s * 26, label: 'Perfect Pair 25:1' };
+  }
+  if (getBjSuitColor(card1?.suit) === getBjSuitColor(card2?.suit)) {
+    return { payout: s * 13, label: 'Colored Pair 12:1' };
+  }
+  return { payout: s * 7, label: 'Mixed Pair 6:1' };
+}
+function bj21p3Return(card1, card2, card3, stake) {
+  const s = Math.max(0, Number(stake || 0));
+  if (s <= 0) return { payout: 0, label: '' };
+  const cards = [card1, card2, card3].filter(Boolean);
+  if (cards.length !== 3) return { payout: 0, label: '' };
+  const ranks = cards.map((c) => rankValueForPoker(miniBjCardRank(c)));
+  const suits = cards.map((c) => c.suit);
+  const isFlush = suits[0] === suits[1] && suits[1] === suits[2];
+  const isTrips = ranks[0] === ranks[1] && ranks[1] === ranks[2];
+  const isStraight = isPokerStraight(ranks);
+  const isSF = isFlush && isStraight;
+  const isSuitedTrips = isTrips && isFlush;
+  if (isSuitedTrips) return { payout: s * 101, label: 'Suited Trips 100:1' };
+  if (isSF) return { payout: s * 41, label: 'Straight Flush 40:1' };
+  if (isTrips) return { payout: s * 31, label: 'Three of a Kind 30:1' };
+  if (isStraight) return { payout: s * 11, label: 'Straight 10:1' };
+  if (isFlush) return { payout: s * 6, label: 'Flush 5:1' };
+  return { payout: 0, label: '' };
+}
+function miniBjIsNaturalBlackjack(cards) {
+  return Array.isArray(cards) && cards.length === 2 && miniBjTotal(cards) === 21;
+}
+function miniBjIsSoft17(cards) {
+  let total = cards.reduce((sum, c) => sum + miniBjCardValue(c), 0);
+  const aces = cards.filter((c) => miniBjCardRank(c) === 'A').length;
+  while (total > 21 && aces > 0) { total -= 10; }
+  if (total !== 17) return false;
+  return cards.some((c) => miniBjCardRank(c) === 'A');
+}
+function miniBjDealerShouldHit(cards) {
+  const total = miniBjTotal(cards);
+  if (total < 17) return true;
+  if (total > 17) return false;
+  return !miniBjIsSoft17(cards);
+}
+function saveBjLastBetSnapshot() {
+  const main = parseFloat(document.getElementById('bet-input')?.value || 0) || 0;
+  const pairs = parseFloat(document.getElementById('mini-bj-side-pairs')?.value || 0) || 0;
+  const p213 = parseFloat(document.getElementById('mini-bj-side-21p3')?.value || 0) || 0;
+  if (main + pairs + p213 <= 0) return;
+  bjLastBetSnapshot = {
+    main,
+    pairs,
+    p213,
+    history: bjBetHistory.map((h) => ({ ...h }))
+  };
+}
+function bjApplySnapshot(snap) {
+  if (!snap) return false;
+  const inp = document.getElementById('bet-input');
+  const inpPairs = document.getElementById('mini-bj-side-pairs');
+  const inp213 = document.getElementById('mini-bj-side-21p3');
+  if (inp) inp.value = Number(snap.main || 0).toFixed(2);
+  if (inpPairs) inpPairs.value = Number(snap.pairs || 0).toFixed(2);
+  if (inp213) inp213.value = Number(snap.p213 || 0).toFixed(2);
+  bjBetHistory = Array.isArray(snap.history) ? snap.history.map((h) => ({ ...h })) : [];
+  refreshBjSpots();
+  return true;
+}
+function bjRebetLast() {
+  if (!bjBettingOpen) { showToast('Les jeux sont fermés', 'info', 1400); return; }
+  if (!bjLastBetSnapshot) { showToast('Aucune mise précédente', 'info', 1400); return; }
+  const total = Number(bjLastBetSnapshot.main || 0) + Number(bjLastBetSnapshot.pairs || 0) + Number(bjLastBetSnapshot.p213 || 0);
+  if (total > getUserBalance() + 1e-9) { showToast('Solde insuffisant pour rebet', 'error', 1800); return; }
+  bjApplySnapshot(bjLastBetSnapshot);
+  casinoSfx('chip');
+  setDealerTalk('Mise précédente replacée — prêt à distribuer.');
+}
+function bjClearTable() {
+  if (!bjBettingOpen) return;
+  const inp = document.getElementById('bet-input');
+  const inpPairs = document.getElementById('mini-bj-side-pairs');
+  const inp213 = document.getElementById('mini-bj-side-21p3');
+  if (inp) inp.value = '0';
+  if (inpPairs) inpPairs.value = '0';
+  if (inp213) inp213.value = '0';
+  bjBetHistory = [];
+  refreshBjSpots();
+  casinoSfx('chip');
+  setDealerTalk('Table effacée. Place tes jetons.');
+}
+function bjDoubleTableBets() {
+  if (!bjBettingOpen) return;
+  const main = parseFloat(document.getElementById('bet-input')?.value || 0) || 0;
+  const pairs = parseFloat(document.getElementById('mini-bj-side-pairs')?.value || 0) || 0;
+  const p213 = parseFloat(document.getElementById('mini-bj-side-21p3')?.value || 0) || 0;
+  const cur = main + pairs + p213;
+  if (cur <= 0) { showToast('Aucune mise à doubler', 'info', 1400); return; }
+  if (cur * 2 > getUserBalance() + 1e-9) { showToast('Solde insuffisant pour ×2', 'error', 1800); return; }
+  const doubled = {
+    main: main * 2,
+    pairs: pairs * 2,
+    p213: p213 * 2,
+    history: bjBetHistory.flatMap((h) => [{ ...h }, { ...h }])
+  };
+  bjApplySnapshot(doubled);
+  casinoSfx('chips');
+  setDealerTalk('Mises doublées sur la table.');
+}
+function miniBjCanSplit() {
+  if (!miniBjState?.inRound || miniBjState.player.length !== 2) return false;
+  if (miniBjState.doubled || miniBjState.splitHand) return false;
+  return miniBjCardRank(miniBjState.player[0]) === miniBjCardRank(miniBjState.player[1]);
+}
+function miniBjCanDouble() {
+  if (!miniBjState?.inRound || miniBjState.player.length !== 2) return false;
+  if (miniBjState.doubled || miniBjState.splitHand) return false;
+  return getUserBalance() >= miniBjState.bet - 1e-9;
+}
+function miniBjRefreshActions() {
+  const active = !!(miniBjState?.inRound && !miniBjState?.awaitingInsurance);
+  const canDouble = active && miniBjCanDouble();
+  const canSplit = active && miniBjCanSplit();
+  ['bj-side-hit', 'bj-side-stand', 'bj-tbl-hit', 'bj-tbl-stand'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !active;
+  });
+  ['bj-side-double', 'bj-tbl-double'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !canDouble;
+  });
+  ['bj-side-split', 'bj-tbl-split'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !canSplit;
+  });
+  const tbl = document.getElementById('bj-table-actions');
+  if (tbl) tbl.classList.toggle('is-active', active);
+  const ins = document.getElementById('bj-insurance-bar');
+  if (ins) ins.classList.toggle('show', !!(miniBjState?.awaitingInsurance));
+}
 function miniBjDraw() {
   const rank = MINI_BJ_RANKS[Math.floor(Math.random() * MINI_BJ_RANKS.length)];
   const suit = MINI_BJ_SUITS[Math.floor(Math.random() * MINI_BJ_SUITS.length)];
@@ -1432,18 +1835,20 @@ function miniBjSetControls(playerTurnActive, opts = {}) {
   const dealing = !!opts.dealing;
   const hit = document.getElementById('mini-bj-hit');
   const stand = document.getElementById('mini-bj-stand');
-  const sideHit = document.getElementById('bj-side-hit');
-  const sideStand = document.getElementById('bj-side-stand');
   const main = document.getElementById('main-play-btn');
   if (hit) hit.disabled = !playerTurnActive;
   if (stand) stand.disabled = !playerTurnActive;
-  if (sideHit) sideHit.disabled = !playerTurnActive;
-  if (sideStand) sideStand.disabled = !playerTurnActive;
   if (main) {
-    const busy = playerTurnActive || dealing;
+    const busy = playerTurnActive || dealing || !!(miniBjState?.awaitingInsurance);
     main.disabled = busy;
-    main.textContent = busy ? 'En cours...' : 'Lancer une partie';
+    if (dealing) main.textContent = 'Distribution...';
+    else if (playerTurnActive || miniBjState?.awaitingInsurance) main.textContent = 'En cours...';
+    else main.textContent = 'DISTRIBUER';
   }
+  const tools = document.getElementById('bj-bet-tools');
+  if (tools) tools.style.opacity = (playerTurnActive || dealing || miniBjState?.inRound) ? '0.45' : '1';
+  if (tools) tools.style.pointerEvents = (playerTurnActive || dealing || miniBjState?.inRound) ? 'none' : '';
+  miniBjRefreshActions();
 }
 let miniBjSideBadgeTimer = null;
 function showMiniBjSideBadge(text, kind = 'win') {
@@ -1463,6 +1868,99 @@ function showMiniBjSideBadge(text, kind = 'win') {
     el.classList.remove('show');
   }, 2300);
 }
+function settleBjSideBets(sidePairs, side21p3, p1, p2, d1) {
+  const sideStake = Math.max(0, Number(sidePairs || 0)) + Math.max(0, Number(side21p3 || 0));
+  let sidePayout = 0;
+  const labels = [];
+  if (sidePairs > 0) {
+    const pairRes = bjPerfectPairsReturn(p1, p2, sidePairs);
+    if (pairRes.payout > 0) {
+      sidePayout += pairRes.payout;
+      labels.push(pairRes.label);
+    }
+  }
+  if (side21p3 > 0) {
+    const p213Res = bj21p3Return(p1, p2, d1, side21p3);
+    if (p213Res.payout > 0) {
+      sidePayout += p213Res.payout;
+      labels.push(p213Res.label);
+    }
+  }
+  consumeStakePreview('blackjack_side', sideStake);
+  if (sidePayout > 0) {
+    applyNetDeltaForGame('blackjack_side', sidePayout).catch((e) => {
+      pushRuntimeLog('warn', `bj_side_settlement_failed: ${String(e?.message || e || 'unknown')}`);
+    });
+    const detail = labels.length ? labels.join(' · ') : 'Side Bets';
+    pushGameHistory('blackjack', `${detail}: +${fmt(sidePayout)}`);
+    showMiniBjSideBadge(`${detail} +${fmt(sidePayout)}`, 'win');
+    casinoSfx('coin');
+  } else if (sideStake > 0) {
+    pushGameHistory('blackjack', `Side bets perdus: -${fmt(sideStake)}`);
+    showMiniBjSideBadge(`Side bets -${fmt(sideStake)}`, 'lose');
+  }
+}
+function bjResolveInsurance(take) {
+  if (!miniBjState?.awaitingInsurance) return;
+  const insCost = miniBjState.bet / 2;
+  miniBjState.awaitingInsurance = false;
+  miniBjState.insuranceBet = 0;
+  if (take) {
+    if (getUserBalance() < insCost - 1e-9) {
+      showToast('Solde insuffisant pour l’assurance', 'error', 1800);
+      setDealerTalk('Assurance refusée — solde insuffisant.');
+    } else {
+      previewStakeDeduction('blackjack_ins', insCost);
+      miniBjState.insuranceBet = insCost;
+      setDealerTalk(`Assurance prise pour ${fmt(insCost)}.`);
+      casinoSfx('chip');
+    }
+  } else {
+    setDealerTalk('Pas d’assurance.');
+  }
+  bjFinishDealPhase();
+}
+function bjSettleInsuranceIfNeeded() {
+  if (!miniBjState || !miniBjState.insuranceBet) return;
+  const dealerBj = miniBjIsNaturalBlackjack(miniBjState.dealer);
+  if (!dealerBj) return;
+  const insReturn = miniBjState.insuranceBet * 3;
+  consumeStakePreview('blackjack_ins', miniBjState.insuranceBet);
+  applyNetDeltaForGame('blackjack_ins', insReturn).catch(() => {});
+  showMiniBjSideBadge(`Assurance +${fmt(insReturn)}`, 'win');
+  pushGameHistory('blackjack', `Assurance gagnée: +${fmt(insReturn)}`);
+}
+function bjCheckNaturalBlackjacks(bet) {
+  const pBj = miniBjIsNaturalBlackjack(miniBjState.player);
+  const dBj = miniBjIsNaturalBlackjack(miniBjState.dealer);
+  if (!pBj && !dBj) return false;
+  bjSettleInsuranceIfNeeded();
+  if (pBj && dBj) {
+    miniBjEndRound(bet, 'Double Blackjack — Push', 'var(--text-dim)', 1);
+    return true;
+  }
+  if (pBj) {
+    miniBjEndRound(bet, 'BLACKJACK ! Paiement 3:2', 'var(--green)', 2.5);
+    return true;
+  }
+  miniBjEndRound(bet, 'Blackjack croupier', 'var(--red)', 0);
+  return true;
+}
+function bjFinishDealPhase() {
+  if (!miniBjState) return;
+  const bet = miniBjState.bet;
+  const { sidePairs, side21p3 } = miniBjState;
+  const p1 = miniBjState.player[0];
+  const p2 = miniBjState.player[1];
+  const d1 = miniBjState.dealer[0];
+  const res = document.getElementById('mini-bj-result');
+  miniBjRender(false);
+  settleBjSideBets(sidePairs, side21p3, p1, p2, d1);
+  if (bjCheckNaturalBlackjacks(bet)) return;
+  miniBjSetControls(true);
+  setDealerTalk('À toi : tirer, doubler, diviser ou rester.');
+  if (res) { res.textContent = 'À toi de jouer'; res.style.color = 'var(--gold)'; }
+}
 function miniBjEndRound(bet, text, color, payoutMultiplier) {
   const res = document.getElementById('mini-bj-result');
   if (res) {
@@ -1475,9 +1973,11 @@ function miniBjEndRound(bet, text, color, payoutMultiplier) {
   }
   showMiniBjSideBadge('');
   miniBjState.inRound = false;
+  miniBjState.awaitingInsurance = false;
   miniBjRender(true);
   miniBjSetControls(false);
   setBjBettingOpen(true);
+  saveBjLastBetSnapshot();
   pushGameHistory('blackjack', `${text} | Mise ${fmt(bet)} | x${Number(payoutMultiplier || 0).toFixed(2)}`);
   if (payoutMultiplier >= 2) triggerCinematicWin();
   if (payoutMultiplier > 0) {
@@ -1486,38 +1986,163 @@ function miniBjEndRound(bet, text, color, payoutMultiplier) {
     loseGame(bet);
   }
 }
-async function miniBjHit() {
-  if (!miniBjState || !miniBjState.inRound) return;
-  setDealerTalk('Carte pour le joueur.');
-  casinoSfx('card');
+async function miniBjDouble() {
+  if (!miniBjState?.inRound || miniBjState.player.length !== 2 || miniBjState.doubled) return;
+  const extra = miniBjState.bet;
+  if (getUserBalance() < extra - 1e-9) {
+    showToast('Solde insuffisant pour doubler', 'error', 1800);
+    return;
+  }
+  previewStakeDeduction('blackjack', extra);
+  miniBjState.bet += extra;
+  miniBjState.doubled = true;
+  const inp = document.getElementById('bet-input');
+  if (inp) inp.value = miniBjState.bet.toFixed(2);
+  setDealerTalk('Mise doublée — une carte.');
+  casinoSfx('chip');
   miniBjState.player.push(miniBjDraw());
   miniBjRender(false);
   miniBjAnimateLatest('player');
-  await gameSleep(160);
+  await gameSleep(200);
+  miniBjRefreshActions();
   const total = miniBjTotal(miniBjState.player);
-  if (total > 21) miniBjEndRound(miniBjState.bet, 'BUST ! Tu dépasses 21.', 'var(--red)', 0);
+  if (total > 21) miniBjEndRound(miniBjState.bet, 'BUST après double !', 'var(--red)', 0);
+  else await miniBjStand();
 }
-async function miniBjStand() {
-  if (!miniBjState || !miniBjState.inRound) return;
+async function miniBjSplit() {
+  if (!miniBjCanSplit()) return;
+  const extra = miniBjState.bet;
+  if (getUserBalance() < extra - 1e-9) {
+    showToast('Solde insuffisant pour diviser', 'error', 1800);
+    return;
+  }
+  previewStakeDeduction('blackjack', extra);
+  const c1 = miniBjState.player[0];
+  const c2 = miniBjState.player[1];
+  miniBjState.splitHand = true;
+  miniBjState.hands = [
+    { cards: [c1], bet: miniBjState.bet, stood: false },
+    { cards: [c2], bet: extra, stood: false }
+  ];
+  miniBjState.activeHand = 0;
+  miniBjState.player = miniBjState.hands[0].cards;
+  miniBjState.bet = miniBjState.hands[0].bet;
+  miniBjState.hands[0].cards.push(miniBjDraw());
+  miniBjState.hands[1].cards.push(miniBjDraw());
+  miniBjState.player = miniBjState.hands[0].cards;
+  miniBjRender(false);
+  miniBjAnimateLatest('player');
+  setDealerTalk('Main divisée — joue la première main.');
+  casinoSfx('card');
+  miniBjRefreshActions();
+}
+async function miniBjResolveDealer() {
   setDealerTalk('Le croupier joue sa main.');
   miniBjRender(true);
   await gameSleep(220);
-  while (miniBjTotal(miniBjState.dealer) < 17) {
+  while (miniBjDealerShouldHit(miniBjState.dealer)) {
     casinoSfx('card');
     miniBjState.dealer.push(miniBjDraw());
     miniBjRender(true);
     miniBjAnimateLatest('dealer');
     await gameSleep(240);
   }
+  return miniBjTotal(miniBjState.dealer);
+}
+async function miniBjFinishSplitHands() {
+  const d = await miniBjResolveDealer();
+  const res = document.getElementById('mini-bj-result');
+  const parts = [];
+  let wins = 0;
+  for (let i = 0; i < miniBjState.hands.length; i++) {
+    const h = miniBjState.hands[i];
+    const p = miniBjTotal(h.cards);
+    if (p > 21) {
+      loseGame(h.bet);
+      parts.push(`M${i + 1} bust`);
+    } else if (d > 21 || p > d) {
+      winGame(h.bet, 2);
+      wins++;
+      parts.push(`M${i + 1} gagné (${p} vs ${d})`);
+    } else if (p === d) {
+      winGame(h.bet, 1);
+      parts.push(`M${i + 1} push`);
+    } else {
+      loseGame(h.bet);
+      parts.push(`M${i + 1} perdu`);
+    }
+  }
+  const text = parts.join(' · ');
+  if (res) {
+    res.textContent = text;
+    res.style.color = wins > 0 ? 'var(--green)' : 'var(--red)';
+    res.classList.remove('win', 'lose', 'neutral');
+    res.classList.add(wins > 0 ? 'win' : 'lose');
+  }
+  showMiniBjSideBadge('');
+  miniBjState.inRound = false;
+  miniBjState.awaitingInsurance = false;
+  miniBjRender(true);
+  miniBjSetControls(false);
+  setBjBettingOpen(true);
+  saveBjLastBetSnapshot();
+  pushGameHistory('blackjack', `Split: ${text}`);
+}
+function miniBjAdvanceSplitHand() {
+  if (!miniBjState?.splitHand) return false;
+  miniBjState.hands[miniBjState.activeHand].stood = true;
+  if (miniBjState.activeHand < miniBjState.hands.length - 1) {
+    miniBjState.activeHand += 1;
+    miniBjState.player = miniBjState.hands[miniBjState.activeHand].cards;
+    miniBjState.bet = miniBjState.hands[miniBjState.activeHand].bet;
+    miniBjRender(false);
+    setDealerTalk(`Main ${miniBjState.activeHand + 1} — à toi.`);
+    miniBjRefreshActions();
+    return false;
+  }
+  return true;
+}
+async function miniBjHit() {
+  if (!miniBjState || !miniBjState.inRound) return;
+  setDealerTalk('Carte pour le joueur.');
+  casinoSfx('card');
+  if (miniBjState.splitHand) {
+    const hand = miniBjState.hands[miniBjState.activeHand];
+    hand.cards.push(miniBjDraw());
+    miniBjState.player = hand.cards;
+  } else {
+    miniBjState.player.push(miniBjDraw());
+  }
+  miniBjRender(false);
+  miniBjAnimateLatest('player');
+  await gameSleep(160);
+  const total = miniBjTotal(miniBjState.player);
+  if (total > 21) {
+    if (miniBjState.splitHand) {
+      miniBjState.hands[miniBjState.activeHand].bust = true;
+      if (!miniBjAdvanceSplitHand()) return;
+      await miniBjFinishSplitHands();
+      return;
+    }
+    miniBjEndRound(miniBjState.bet, 'BUST ! Tu dépasses 21.', 'var(--red)', 0);
+  }
+}
+async function miniBjStand() {
+  if (!miniBjState || !miniBjState.inRound) return;
+  if (miniBjState.splitHand) {
+    if (!miniBjAdvanceSplitHand()) return;
+    await miniBjFinishSplitHands();
+    return;
+  }
+  const d = await miniBjResolveDealer();
   const p = miniBjTotal(miniBjState.player);
-  const d = miniBjTotal(miniBjState.dealer);
   if (d > 21 || p > d) miniBjEndRound(miniBjState.bet, `GAGNÉ ! ${p} vs ${d}`, 'var(--green)', 2);
   else if (p === d) miniBjEndRound(miniBjState.bet, `PUSH ${p}-${d} (remboursé)`, 'var(--text-dim)', 1);
   else miniBjEndRound(miniBjState.bet, `PERDU ${p} vs ${d}`, 'var(--red)', 0);
 }
 
 async function loadGamePlay(id) {
-  const nonSpamGames = { blackjack: 1, keno: 1, roulette: 1 };
+  const nonSpamGames = { blackjack: 1, keno: 1, roulette: 1, plinko: 1 };
   window._gameRoundLocks = window._gameRoundLocks || Object.create(null);
   const lockKey = nonSpamGames[id] ? String(id) : '';
   if (lockKey && window._gameRoundLocks[lockKey]) {
@@ -1549,12 +2174,19 @@ async function loadGamePlay(id) {
   if (id === 'blackjack') {
     const sidePairs = Math.max(0, parseFloat(document.getElementById('mini-bj-side-pairs')?.value || 0));
     const side21p3 = Math.max(0, parseFloat(document.getElementById('mini-bj-side-21p3')?.value || 0));
+    if (!bypassBetValidation && bet <= 0) {
+      showToast('Place au moins un jeton sur la mise principale', 'error', 2200);
+      setDealerTalk('Il faut une mise principale pour distribuer.');
+      return;
+    }
     const totalCover = bet + sidePairs + side21p3;
     if (!bypassBetValidation && totalCover > bal + 1e-9) {
       showToast('Solde insuffisant pour la mise principale et les side bets', 'error');
       return;
     }
     previewStakeDeduction('blackjack', bet);
+    const sideStakeTotal = sidePairs + side21p3;
+    if (sideStakeTotal > 0) previewStakeDeduction('blackjack_side', sideStakeTotal);
     casinoSfx('card');
     showMiniBjSideBadge('');
     miniBjState = {
@@ -1562,12 +2194,16 @@ async function loadGamePlay(id) {
       sidePairs,
       side21p3,
       inRound: true,
+      awaitingInsurance: false,
+      insuranceBet: 0,
+      doubled: false,
+      splitHand: false,
       dealer: [],
       player: []
     };
     const res = document.getElementById('mini-bj-result');
     if (res) { res.textContent = 'Distribution en cours...'; res.style.color = 'var(--gold)'; }
-    setDealerTalk('Rien ne va plus... distribution.');
+    setDealerTalk('Faites vos jeux... distribution.');
     setBjBettingOpen(false);
     miniBjSetControls(false, { dealing: true });
     miniBjRender(false);
@@ -1576,41 +2212,16 @@ async function loadGamePlay(id) {
     miniBjState.dealer.push(miniBjDraw()); miniBjRender(false); miniBjAnimateLatest('dealer'); await gameSleep(190);
     miniBjState.player.push(miniBjDraw()); miniBjRender(false); miniBjAnimateLatest('player'); await gameSleep(190);
     miniBjState.dealer.push(miniBjDraw()); miniBjRender(false); miniBjAnimateLatest('dealer');
-    // Side bets settled after initial deal
-    const p1 = miniBjState.player[0], p2 = miniBjState.player[1];
     const d1 = miniBjState.dealer[0];
-    const r1 = miniBjCardRank(p1);
-    const r2 = miniBjCardRank(p2);
-    const rd = miniBjCardRank(d1);
-    let sideWin = 0;
-    if (sidePairs > 0) {
-      if (r1 && r1 === r2) sideWin += sidePairs * 12;
-      else sideWin -= sidePairs;
+    if (miniBjCardRank(d1) === 'A') {
+      miniBjState.awaitingInsurance = true;
+      miniBjSetControls(false, { dealing: false });
+      setDealerTalk('Le croupier montre un As — assurance disponible.');
+      if (res) { res.textContent = 'Assurance ?'; res.style.color = 'var(--gold-true)'; }
+      miniBjRefreshActions();
+      return;
     }
-    if (side21p3 > 0) {
-      const vals = [r1, r2, rd].map(c => (['J','Q','K'].includes(c) ? 10 : c === 'A' ? 1 : Number(c)));
-      const sum = vals[0] + vals[1] + vals[2];
-      if (sum === 21) sideWin += side21p3 * 9;
-      else sideWin -= side21p3;
-    }
-    if (sideWin !== 0) {
-      await applyNetDeltaForGame('blackjack_side', sideWin);
-      pushGameHistory('blackjack', `Side bets: ${sideWin >= 0 ? '+' : ''}${fmt(sideWin)}`);
-      showMiniBjSideBadge(`Side Bets ${sideWin > 0 ? '+' : ''}${fmt(sideWin)}`, sideWin > 0 ? 'win' : 'lose');
-    } else if (sidePairs > 0 || side21p3 > 0) {
-      showMiniBjSideBadge('Side Bets 0.00', 'lose');
-    }
-    miniBjRender(false);
-    miniBjSetControls(true);
-    setDealerTalk('A toi de decider : tirer ou rester ?');
-    if (res) { res.textContent = 'À toi de jouer'; res.style.color = 'var(--gold)'; }
-    const p = miniBjTotal(miniBjState.player);
-    const d = miniBjTotal(miniBjState.dealer);
-    if (p === 21 || d === 21) {
-      if (p === 21 && d === 21) miniBjEndRound(bet, 'Double Blackjack: Push', 'var(--text-dim)', 1);
-      else if (p === 21) miniBjEndRound(bet, 'Blackjack !', 'var(--green)', 2.5);
-      else miniBjEndRound(bet, 'Dealer Blackjack', 'var(--red)', 0);
-    }
+    bjFinishDealPhase();
     return;
   }
 

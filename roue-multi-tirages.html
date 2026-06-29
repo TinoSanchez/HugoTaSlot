@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La Roue de 19enplein - Multi-Tirages</title>
+
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+<style>
+/* Fond ambiance Casino (Tapis de jeu très sombre / Carbone) */
+body {
+  margin: 0;
+  background-color: #0b0f12;
+  background-image: radial-gradient(circle at center, #1a242d 0%, #070a0d 100%);
+  color: white;
+  font-family: 'Georgia', 'Arial', sans-serif;
+  text-align: center;
+  padding-bottom: 40px;
+}
+
+/* Bloc Gris contenant la configuration */
+.grey-container {
+  background-color: #0f171e;
+  border: 1px solid #1c2732;
+  border-radius: 16px;
+  max-width: 480px;
+  margin: 20px auto;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.brand-logo {
+  max-width: 180px;
+  height: auto;
+  margin-bottom: 15px;
+}
+
+/* Titre style Vegas / Néon */
+h1 {
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-top: 30px;
+  font-size: 42px;
+  font-weight: 900;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.4);
+}
+
+h1 span {
+  color: #10ac84;
+  text-shadow: 0 0 10px rgba(16, 172, 132, 0.8);
+}
+
+p {
+  color: #9aa7b5;
+  font-size: 16px;
+  font-style: italic;
+  margin-top: 0;
+}
+
+label {
+  display: block;
+  color: gold;
+  font-weight: bold;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+select {
+  width: 90%;
+  padding: 10px;
+  background: #161d24;
+  color: white;
+  border: 2px solid #8a6d3b;
+  border-radius: 8px;
+  font-size: 16px;
+  margin-bottom: 15px;
+  cursor: pointer;
+}
+
+textarea {
+  width: 90%;
+  height: 100px;
+  background: #161d24;
+  color: #fff;
+  border: 2px solid #10ac84;
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 16px;
+  resize: none;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #00ffbc;
+  box-shadow: 0 0 10px rgba(0, 255, 188, 0.3);
+}
+
+button {
+  margin: 15px;
+  padding: 15px 35px;
+  font-size: 20px;
+  font-family: Arial, sans-serif;
+  border: 2px solid #8a6d3b;
+  border-radius: 30px;
+  background: linear-gradient(180deg, #ffe082 0%, #c5a059 100%);
+  color: #111;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5), inset 0 2px 2px rgba(255,255,255,0.5);
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+}
+
+button:hover {
+  background: linear-gradient(180deg, #fff3cc 0%, #e6b800 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 7px 20px rgba(255, 215, 0, 0.3);
+}
+
+button:disabled {
+  background: #444 !important;
+  color: #888 !important;
+  border-color: #333 !important;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+#wheel-container {
+  position: relative;
+  width: 460px;
+  height: 460px;
+  margin: 30px auto;
+  max-width: 94vw;
+}
+
+#pointer {
+  width: 0;
+  height: 0;
+  border-left: 20px solid transparent;
+  border-right: 20px solid transparent;
+  border-top: 35px solid #ff3333;
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  filter: drop-shadow(0 4px 5px rgba(0,0,0,0.5));
+}
+
+#canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+#results-box {
+  max-width: 600px;
+  margin: 20px auto;
+  min-height: 100px;
+}
+
+.result-line {
+  font-size: 24px;
+  margin: 10px 0;
+  font-weight: bold;
+  animation: fadeIn 0.5s ease;
+}
+
+.current-draw {
+  font-size: 42px;
+  color: #2ecc71;
+  text-shadow: 0 0 20px rgba(46, 204, 113, 0.6);
+}
+
+.reward-amount {
+  color: gold;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.4);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.script-credit {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px auto 8px;
+  padding: 8px 16px 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+}
+.script-credit__avatar {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  background: #1e1f22 url('./assets/credit-bloodz.png') center 14% / 200% no-repeat;
+}
+.script-credit__avatar::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1a1a1a;
+}
+.script-credit__body { text-align: left; line-height: 1.25; }
+.script-credit__label {
+  display: block;
+  font-size: 11px;
+  color: #9aa7b5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.script-credit__name {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎰 LA ROUE DE <span>19ENPLEIN</span> 🎰</h1>
+
+<div class="grey-container">
+  <img src="./assets/gamdom-logo-white.png" alt="Gamdom Logo" class="brand-logo" onerror="this.style.display='none'">
+
+  <label for="modeSelect">Type de Tirage au sort :</label>
+  <select id="modeSelect" onchange="resetTirage()">
+    <option value="classic">Tirage Classique (Montant unique 5$)</option>
+    <option value="2x25">2 Vainqueurs à 25$</option>
+    <option value="3x25">3 Vainqueurs à 25$</option>
+    <option value="3_special">3 Vainqueurs Spécial (50$ / 25$ / 15$)</option>
+  </select>
+
+  <p>Entrez un prénom par ligne :</p>
+  <textarea id="names"></textarea>
+  <br>
+  <button id="btnCreate" type="button" onclick="createWheel()">Mettre à jour la roue</button>
+</div>
+
+<div id="wheel-container">
+  <div id="pointer"></div>
+  <canvas id="canvas" width="460" height="460"></canvas>
+</div>
+
+<button id="btnSpin" type="button" onclick="spinWheel()">🔥 TOURNER LA ROUE</button>
+
+<div id="results-box">
+  <div id="current-winner" class="result-line current-draw"></div>
+  <div id="history-winners"></div>
+</div>
+
+<div class="script-credit" aria-label="Crédit script">
+  <span class="script-credit__avatar" role="img" aria-label="Avatar !Bloodz"></span>
+  <span class="script-credit__body">
+    <span class="script-credit__label">Script par</span>
+    <span class="script-credit__name">!Bloodz</span>
+  </span>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const centerLogo = new Image();
+centerLogo.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M20,45 L35,45 L35,35 L50,45 L65,35 L65,45 L80,45 L80,25 L65,25 L50,15 L35,25 L20,25 Z' fill='%2310ac84'/><path d='M20,50 L50,50 L50,85 L20,65 Z' fill='%2300ffbc'/><path d='M50,50 L80,50 L80,65 L50,85 Z' fill='%2310ac84'/></svg>";
+
+centerLogo.onload = function() { drawWheel(); };
+
+let participants = [];
+let isSpinning = false;
+let currentAngle = 0;
+
+let currentRewardsList = [];
+let currentRewardIndex = 0;
+let multiDrawMode = false;
+
+const WHEEL_POINTER = Math.PI * 1.5;
+
+function wheelNorm(a) {
+  const t = Math.PI * 2;
+  return ((a % t) + t) % t;
+}
+
+/** Index du segment sous la flèche (haut de la roue). */
+function wheelIndexAtPointer(wheelAngle, count) {
+  if (!count) return 0;
+  const arc = (Math.PI * 2) / count;
+  const local = wheelNorm(WHEEL_POINTER - wheelNorm(wheelAngle));
+  return Math.floor(local / arc) % count;
+}
+
+/** Angle final pour centrer le segment `index` sous la flèche. */
+function wheelAngleForIndex(index, count) {
+  const arc = (Math.PI * 2) / count;
+  return wheelNorm(WHEEL_POINTER - (index + 0.5) * arc);
+}
+
+function wheelFinalAngle(fromAngle, index, count, minExtraTurns, maxExtraTurns) {
+  const targetMod = wheelAngleForIndex(index, count);
+  const curMod = wheelNorm(fromAngle);
+  let delta = wheelNorm(targetMod - curMod);
+  if (delta < 0.001) delta += Math.PI * 2;
+  const extraRange = Math.max(0, maxExtraTurns - minExtraTurns);
+  const extra = minExtraTurns + Math.floor(Math.random() * (extraRange + 1));
+  return fromAngle + extra * Math.PI * 2 + delta;
+}
+
+const donationAmounts = ["5$"];
+const colors = ["#d63031", "#10ac84", "#2e3a4e", "#5758bb", "#1e272e", "#cf6a87", "#00d2d3", "#ff9f43"];
+
+window.onload = function() {
+  const savedNames = localStorage.getItem("roue_pseudos");
+  if (savedNames) {
+    document.getElementById("names").value = savedNames;
+  } else {
+    document.getElementById("names").value = "Lucas\nEmma\nNathan\nSofia\nLina\nTom\nSarah\nLouis\nJade\nEnzo";
+  }
+  createWheel();
+};
+
+function resetTirage() {
+  currentRewardIndex = 0;
+  multiDrawMode = false;
+  document.getElementById("current-winner").innerHTML = "";
+  document.getElementById("history-winners").innerHTML = "";
+}
+
+function createWheel() {
+  if (isSpinning) return;
+  const txtValue = document.getElementById("names").value;
+  participants = txtValue.split("\n").map(n => n.trim()).filter(n => n !== "");
+
+  localStorage.setItem("roue_pseudos", txtValue);
+
+  resetTirage();
+  drawWheel();
+}
+
+function drawWheel() {
+  const numSegments = participants.length;
+  if (numSegments === 0) return;
+
+  const arcSize = (2 * Math.PI) / numSegments;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < numSegments; i++) {
+    const angle = currentAngle + i * arcSize;
+
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2, canvas.height / 2);
+    ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2, angle, angle + arcSize);
+    ctx.lineTo(canvas.width / 2, canvas.height / 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(212, 175, 55, 0.3)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(angle + arcSize / 2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 16px Arial";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+    ctx.shadowBlur = 4;
+    ctx.fillText(participants[i], canvas.width / 2 - 45, 6);
+    ctx.restore();
+  }
+
+  const centerRadius = 35;
+  ctx.beginPath();
+  ctx.arc(canvas.width / 2, canvas.height / 2, centerRadius, 0, 2 * Math.PI);
+  ctx.fillStyle = "#11171c";
+  ctx.fill();
+  ctx.strokeStyle = "#10ac84";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  if (centerLogo.complete) {
+    const logoSize = 46;
+    ctx.drawImage(centerLogo, canvas.width / 2 - logoSize / 2, canvas.height / 2 - logoSize / 2, logoSize, logoSize);
+  }
+}
+
+function spinWheel() {
+  if (isSpinning) return;
+
+  if (currentRewardIndex === 0) {
+    const txtValue = document.getElementById("names").value;
+    participants = txtValue.split("\n").map(n => n.trim()).filter(n => n !== "");
+    const mode = document.getElementById("modeSelect").value;
+    document.getElementById("history-winners").innerHTML = "";
+
+    if (mode === "2x25") {
+      currentRewardsList = ["25$", "25$"];
+      multiDrawMode = true;
+    } else if (mode === "3x25") {
+      currentRewardsList = ["25$", "25$", "25$"];
+      multiDrawMode = true;
+    } else if (mode === "3_special") {
+      currentRewardsList = ["50$", "25$", "15$"];
+      multiDrawMode = true;
+    } else {
+      currentRewardsList = [];
+      multiDrawMode = false;
+    }
+  }
+
+  if (participants.length === 0) {
+    alert("Plus de participants disponibles !");
+    resetTirage();
+    return;
+  }
+
+  isSpinning = true;
+  document.getElementById("btnSpin").disabled = true;
+  document.getElementById("btnCreate").disabled = true;
+  document.getElementById("modeSelect").disabled = true;
+  document.getElementById("current-winner").innerHTML = "Sélection en cours...";
+
+  const winnerIndex = Math.floor(Math.random() * participants.length);
+  const startAngle = currentAngle;
+  const finalAngle = wheelFinalAngle(startAngle, winnerIndex, participants.length, 5, 8);
+  const spinDuration = 4200;
+  const startTime = performance.now();
+
+  function animate(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(1, elapsed / spinDuration);
+    const ease = 1 - Math.pow(1 - t, 3);
+    currentAngle = startAngle + (finalAngle - startAngle) * ease;
+    drawWheel();
+    if (t < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      currentAngle = finalAngle;
+      drawWheel();
+      isSpinning = false;
+      processWinner(winnerIndex);
+    }
+  }
+  requestAnimationFrame(animate);
+}
+
+function processWinner(winnerIndex) {
+  const numSegments = participants.length;
+  if (!numSegments) return;
+
+  const verified = wheelIndexAtPointer(currentAngle, numSegments);
+  const idx = Number.isFinite(winnerIndex) ? winnerIndex : verified;
+  const winner = participants[idx];
+
+  let reward = "";
+
+  if (multiDrawMode) {
+    reward = currentRewardsList[currentRewardIndex];
+    currentRewardIndex++;
+
+    document.getElementById("current-winner").innerHTML = `🏆 Tirage ${currentRewardIndex} : ${winner} !`;
+
+    const historyItem = document.createElement("div");
+    historyItem.className = "result-line";
+    historyItem.innerHTML = `Vainqueur n°${currentRewardIndex} : <span style="color:#10ac84">${winner}</span> ➡️ <span class="reward-amount">${reward}</span>`;
+    document.getElementById("history-winners").appendChild(historyItem);
+
+    participants.splice(idx, 1);
+    document.getElementById("names").value = participants.join("\n");
+
+    if (currentRewardIndex < currentRewardsList.length) {
+      document.getElementById("btnSpin").disabled = false;
+      document.getElementById("btnSpin").innerHTML = `🔥 TIRER LE VAINQUEUR SUIVANT (${currentRewardsList[currentRewardIndex]})`;
+    } else {
+      document.getElementById("current-winner").innerHTML = "🎉 Fin de la session de tirage !";
+      document.getElementById("btnSpin").disabled = false;
+      document.getElementById("btnSpin").innerHTML = "🔥 RECOMMENCER UNE SESSION";
+      document.getElementById("btnCreate").disabled = false;
+      document.getElementById("modeSelect").disabled = false;
+      currentRewardIndex = 0;
+    }
+
+  } else {
+    reward = donationAmounts[0];
+    document.getElementById("current-winner").innerHTML = `🏆 ${winner} EN PLEIN !`;
+
+    const historyItem = document.createElement("div");
+    historyItem.className = "result-line";
+    historyItem.innerHTML = `💰 DON COULEUR : <span class="reward-amount">${reward}</span>`;
+    document.getElementById("history-winners").innerHTML = "";
+    document.getElementById("history-winners").appendChild(historyItem);
+
+    participants.splice(idx, 1);
+    document.getElementById("names").value = participants.join("\n");
+
+    document.getElementById("btnSpin").disabled = false;
+    document.getElementById("btnCreate").disabled = false;
+    document.getElementById("modeSelect").disabled = false;
+  }
+
+  if (typeof confetti === "function") {
+    confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+  }
+
+  currentAngle = wheelNorm(currentAngle);
+  drawWheel();
+}
+</script>
+
+</body>
+</html>

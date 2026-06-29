@@ -59,22 +59,10 @@
       <div class="logo-sub">BONUS HUNT TOOL · TEAM CASINO</div>
       <a class="sidebar-partner" href="https://gamdom.com" target="_blank" rel="noopener noreferrer" aria-label="Partenaire officiel : Gamdom">
         <span class="sidebar-partner-label">PARTENAIRE OFFICIEL</span>
-        <img class="sidebar-partner-img" src="./assets/gamdom-logo-white.png" alt="Gamdom">
+        <img class="sidebar-partner-img" src="./assets/gamdom-logo-white-transparent.png" alt="Gamdom">
       </a>
             </div>
             
-    <button class="sidebar-btn" id="btn-new-hunt">+ NOUVEAU HUNT</button>
-
-    <div class="sidebar-section-title">// SESSIONS</div>
-    <div style="display:flex;gap:6px;padding:0 10px 8px;">
-      <input id="hunt-filter-q" class="profile-menu-input" placeholder="Filtrer hunt/tag..." style="height:42px;font-size:17px;padding:0 12px;">
-    </div>
-    <div id="hunt-list">
-      <div class="empty-state" id="hunts-empty">
-        <div class="empty-icon"><img src="./assets/virtual-token.svg" class="ui-logo-icon" alt="logo"></div>
-        <div class="empty-text">AUCUNE SESSION</div>
-                </div>
-            </div>
     <!-- SIDEBAR NAVIGATION TABS -->
     <nav class="sidebar-tabs" aria-label="Sections du site">
       <button type="button" class="sidebar-tab active" data-page="home" aria-current="page">
@@ -86,20 +74,20 @@
       <button type="button" class="sidebar-tab" data-page="blackjack">
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-cards.svg" alt="" aria-hidden="true">TABLEAU BJ
       </button>
-      <button type="button" class="sidebar-tab" data-page="mise">
-        <img class="sidebar-tab-icon-img" src="./assets/virtual-token.svg" alt="" aria-hidden="true">MISE OPTIMALE
-      </button>
       <button type="button" class="sidebar-tab" data-page="roue_depot">
-        <img class="sidebar-tab-icon-logo section" src="./assets/icon-game-roulette.svg" alt="" aria-hidden="true">ROUE DU DÉPÔT
-      </button>
-      <button type="button" class="sidebar-tab" data-page="tournoi">
-        <img class="sidebar-tab-icon-logo section" src="./assets/icon-trophy.svg" alt="" aria-hidden="true">TOURNOI
+        <img class="sidebar-tab-icon-logo section" src="./assets/icon-game-roulette.svg" alt="" aria-hidden="true">SLOT DÉPÔT
       </button>
       <button type="button" class="sidebar-tab" data-page="stats">
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-stats.svg" alt="" aria-hidden="true">STATISTIQUES
       </button>
       <button type="button" class="sidebar-tab" data-page="jeux">
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-games.svg" alt="" aria-hidden="true">MINI JEUX
+      </button>
+      <button type="button" class="sidebar-tab" data-page="roue_multi">
+        <img class="sidebar-tab-icon-logo section" src="./assets/icon-game-roulette.svg" alt="" aria-hidden="true">ROUE MULTI
+      </button>
+      <button type="button" class="sidebar-tab" data-page="roue_tournoi_equipes">
+        <img class="sidebar-tab-icon-logo section" src="./assets/icon-game-roulette.svg" alt="" aria-hidden="true">ROUE ÉQUIPES
       </button>
       <button type="button" class="sidebar-tab" data-page="updates">
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-updates.svg" alt="" aria-hidden="true">UPDATES
@@ -119,8 +107,25 @@
   <!-- ─── MAIN ─── -->
   <main id="main">
 
-    <!-- HEADER -->
-    <header id="header">
+    <!-- BONUS HUNT HUB — tout le hunt sur une seule page -->
+    <div id="hunt-hub" class="hunt-hub" style="display:none;" aria-label="Zone Bonus Hunt">
+
+      <aside class="hunt-hub-sessions" aria-label="Sessions Bonus Hunt">
+        <button class="sidebar-btn hunt-hub-new-btn" id="btn-new-hunt" type="button">+ NOUVEAU HUNT</button>
+        <div class="hunt-hub-sessions-title">// SESSIONS</div>
+        <div class="hunt-hub-sessions-filter">
+          <input id="hunt-filter-q" class="profile-menu-input" placeholder="Filtrer hunt/tag..." autocomplete="off">
+        </div>
+        <div id="hunt-list">
+          <div class="empty-state" id="hunts-empty">
+            <div class="empty-icon"><img src="./assets/virtual-token.svg" class="ui-logo-icon" alt="logo"></div>
+            <div class="empty-text">AUCUNE SESSION</div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="hunt-hub-main">
+        <header id="header">
       <div class="hunt-title-area">
         <div class="hunt-title-main" id="current-hunt-name">— SÉLECTIONNER UN HUNT —</div>
         <div class="hunt-title-sub" id="current-hunt-date"></div>
@@ -134,11 +139,11 @@
           <div class="stat-label">SOLDE DE DÉPART</div>
           <div class="stat-value gold" id="stat-total-money">0.00€</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card--profit">
           <div class="stat-label">PROFIT</div>
           <div class="stat-value" id="stat-profit">—</div>
           <div class="stat-subhint" id="stat-profit-hint">Ajoute des bonus pour lancer le hunt.</div>
-    </div>
+        </div>
         <div class="stat-card">
           <div class="stat-label">GAINS CUMULÉS</div>
           <div class="stat-value gold" id="stat-total-win">0.00€</div>
@@ -149,9 +154,19 @@
         </div>
       </div>
       <button class="open-btn" id="btn-open-hunt-header" disabled style="display:none;"><span>▶ OUVRIR LE HUNT</span></button>
-    </header>
+        </header>
 
-    <!-- CONTENT -->
+        <nav id="hunt-hub-tabs" class="hunt-hub-tabs" aria-label="Outils Bonus Hunt">
+          <button type="button" class="hunt-hub-tab active" data-hunt-tab="workspace" aria-current="true">SESSION</button>
+          <button type="button" class="hunt-hub-tab" data-hunt-tab="mise">MISE OPTIMALE</button>
+          <button type="button" class="hunt-hub-tab" data-hunt-tab="depot">SLOT DÉPÔT</button>
+          <button type="button" class="hunt-hub-tab" data-hunt-tab="choix">SLOT CHOIX</button>
+          <button type="button" class="hunt-hub-tab" data-hunt-tab="tournoi">TOURNOI</button>
+        </nav>
+
+        <div class="hunt-hub-panels">
+
+          <div id="hunt-tab-workspace" class="hunt-tab-panel active">
     <div id="content">
       <div id="no-hunt-selected" style="display:flex;flex:1;align-items:center;justify-content:center;">
         <div class="empty-state" style="opacity:0.4;">
@@ -273,6 +288,209 @@
                 </div>
             </div>
     </div>
+          </div>
+
+          <div id="hunt-tab-mise" class="hunt-tab-panel">
+            <div class="hunt-tab-scroll page-content">
+              <div class="mise-section">
+                <div class="mise-section-title">MISE OPTIMALE</div>
+                <div class="bj-rec" style="margin-bottom:14px;">Calcule ta mise idéale pour farmer le Bonus Hunt actif.</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:20px;">
+                  <div class="bj-input-group">
+                    <label class="bj-label">SOLDE DISPONIBLE (<span class="currency-symbol-inline">€</span>)</label>
+                    <input type="number" class="bj-input" id="m-balance" value="500" min="1" style="width:100%">
+                  </div>
+                  <div class="bj-input-group">
+                    <label class="bj-label">MODE AUTO</label>
+                    <div class="bj-rec" style="margin-top:0;padding:10px 12px;font-size:11px;">
+                      Le nombre de machines est détecté depuis les bonus de ton hunt actif.
+                    </div>
+                  </div>
+                </div>
+                <button class="play-btn" type="button" onclick="calcMise()" style="height:46px;padding:0 32px;margin:0;">CALCULER</button>
+              </div>
+              <div class="mise-section" id="mise-results" style="display:none;">
+                <div class="mise-section-title">RÉSULTATS</div>
+                <div class="mise-grid" id="mise-grid-content"></div>
+                <div class="bj-rec" id="mise-advice" style="margin-top:16px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="hunt-tab-depot" class="hunt-tab-panel">
+            <div class="hunt-tab-scroll page-content">
+              <div class="deposit-wheel-wrap">
+                <div style="font-family:'Rajdhani',sans-serif;font-size:20px;color:var(--gold);text-align:center;">LE SLOT DU DÉPÔT</div>
+                <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;">3 rouleaux, 1 montant · pas de décimales · case 1 = min, case 10 = max.</div>
+                <div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;">
+                  <input type="number" class="bj-input" id="dep-min" value="10" min="1" step="1" inputmode="numeric" style="width:110px;" placeholder="Min">
+                  <input type="number" class="bj-input" id="dep-max" value="100" min="1" step="1" inputmode="numeric" style="width:110px;" placeholder="Max">
+                  <button class="bet-btn" type="button" onclick="depositWheelGenerate()">Générer 10 cases</button>
+                </div>
+                <div class="deposit-wheel-grid" id="deposit-wheel-grid">
+                  <div class="deposit-wheel-cell" id="dep-cell-1">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-2">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-3">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-4">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-5">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-6">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-7">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-8">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-9">—</div>
+                  <div class="deposit-wheel-cell" id="dep-cell-10">—</div>
+                </div>
+                <div class="deposit-slot-stage deposit-slot-stage--empty">
+                  <div class="deposit-slot-machine">
+                    <div class="deposit-slot-marquee"><span>DÉPÔT</span></div>
+                    <div class="deposit-slot-lights" aria-hidden="true">
+                      <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                    <div class="deposit-slot-reels">
+                      <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
+                      <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
+                      <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
+                      <div class="deposit-slot-payline" aria-hidden="true"></div>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
+                  <button class="bet-btn" type="button" onclick="depositWheelSpin()" style="border-color:var(--gold);color:var(--gold);">LANCER LES ROULEAUX</button>
+                  <a class="bet-btn" href="https://gamdom.com/fr-fr/?modal=wallet&amp;tab=deposit" target="_blank" rel="noopener noreferrer" style="border-color:var(--blue);color:var(--blue);">Go dépôt</a>
+                </div>
+                <div class="dep-result" style="font-family:'Rajdhani',sans-serif;font-size:18px;color:var(--text-dim);text-align:center;">Génère tes 10 montants pour commencer.</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="hunt-tab-choix" class="hunt-tab-panel">
+            <div class="hunt-tab-scroll page-content">
+              <div class="deposit-wheel-wrap choix-wheel-wrap">
+                <div style="font-family:'Rajdhani',sans-serif;font-size:20px;color:var(--gold);text-align:center;">LE SLOT DES CHOIX</div>
+                <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;">4 rouleaux · slot (image) · type · nombre · mise · coche tes options puis lance.</div>
+
+                <div class="choix-config">
+                  <div class="choix-config-bar">
+                    <span class="choix-config-bar__label">Options de tirage</span>
+                    <div class="choix-config-bar__actions">
+                      <button type="button" class="choix-config-bar__btn" data-choix-action="expand">Tout ouvrir</button>
+                      <button type="button" class="choix-config-bar__btn" data-choix-action="collapse">Tout réduire</button>
+                    </div>
+                  </div>
+                  <section class="choix-sec is-collapsed" data-choix-sec="machine">
+                    <button type="button" class="choix-sec__head" aria-expanded="false">
+                      <span class="choix-sec__badge">1</span>
+                      <span class="choix-sec__title">Machine</span>
+                      <span class="choix-sec__summary" id="choix-summary-machine">Toutes les slots</span>
+                      <span class="choix-sec__chev" aria-hidden="true"></span>
+                    </button>
+                    <div class="choix-sec__body">
+                      <div class="choix-mode-tabs" role="radiogroup" aria-label="Source machine">
+                        <button type="button" class="choix-mode-tab" data-choix-mode="none">Aucune</button>
+                        <button type="button" class="choix-mode-tab is-active" data-choix-mode="all">Toutes</button>
+                        <button type="button" class="choix-mode-tab" data-choix-mode="provider">Provider</button>
+                      </div>
+                      <div id="choix-provider-box" class="choix-provider-box" hidden>
+                        <select id="choix-machine-provider" class="choix-provider-select" multiple size="5" aria-label="Providers"></select>
+                        <span class="choix-provider-hint">Ctrl+clic pour plusieurs providers</span>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="choix-sec is-collapsed" data-choix-sec="type">
+                    <button type="button" class="choix-sec__head" aria-expanded="false">
+                      <span class="choix-sec__badge">2</span>
+                      <span class="choix-sec__title">Type de spin</span>
+                      <span class="choix-sec__summary" id="choix-summary-type">6 types</span>
+                      <span class="choix-sec__chev" aria-hidden="true"></span>
+                    </button>
+                    <div class="choix-sec__body">
+                      <div class="choix-sec__tools-row">
+                        <button type="button" class="choix-tool" onclick="event.stopPropagation();choixSlotSelectAll('type')">Tout</button>
+                        <button type="button" class="choix-tool" onclick="event.stopPropagation();choixSlotSelectNone('type')">Rien</button>
+                      </div>
+                      <div class="choix-chips" id="choix-chips-type"></div>
+                    </div>
+                  </section>
+                  <section class="choix-sec is-collapsed" data-choix-sec="count">
+                    <button type="button" class="choix-sec__head" aria-expanded="false">
+                      <span class="choix-sec__badge">3</span>
+                      <span class="choix-sec__title">Nombre</span>
+                      <span class="choix-sec__summary" id="choix-summary-count">15 nombres</span>
+                      <span class="choix-sec__chev" aria-hidden="true"></span>
+                    </button>
+                    <div class="choix-sec__body">
+                      <div class="choix-sec__tools-row">
+                        <button type="button" class="choix-tool" onclick="event.stopPropagation();choixSlotSelectAll('count')">Tout</button>
+                        <button type="button" class="choix-tool" onclick="event.stopPropagation();choixSlotSelectNone('count')">Rien</button>
+                      </div>
+                      <div class="choix-chips choix-chips--dense" id="choix-chips-count"></div>
+                    </div>
+                  </section>
+                  <section class="choix-sec is-collapsed" data-choix-sec="stake">
+                    <button type="button" class="choix-sec__head" aria-expanded="false">
+                      <span class="choix-sec__badge">4</span>
+                      <span class="choix-sec__title">Mise</span>
+                      <span class="choix-sec__summary" id="choix-summary-stake">Toutes les mises</span>
+                      <span class="choix-sec__chev" aria-hidden="true"></span>
+                    </button>
+                    <div class="choix-sec__body">
+                      <div class="choix-sec__tools-row">
+                        <button type="button" class="choix-tool" onclick="event.stopPropagation();choixSlotSelectAll('stake')">Tout</button>
+                        <button type="button" class="choix-tool" onclick="event.stopPropagation();choixSlotSelectNone('stake')">Rien</button>
+                      </div>
+                      <div class="choix-chips choix-chips--dense choix-chips--scroll" id="choix-chips-stake"></div>
+                    </div>
+                  </section>
+                </div>
+
+                <div class="deposit-slot-stage choix-slot-stage deposit-slot-stage--empty">
+                  <div class="deposit-slot-machine choix-slot-machine">
+                    <div class="deposit-slot-marquee"><span>CHOIX</span></div>
+                    <div class="deposit-slot-lights" aria-hidden="true">
+                      <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                    <div class="deposit-slot-reels choix-4reels">
+                      <div class="deposit-slot-reel" data-choix-reel="machine"><div class="deposit-slot-strip"></div></div>
+                      <div class="deposit-slot-reel" data-choix-reel="type"><div class="deposit-slot-strip"></div></div>
+                      <div class="deposit-slot-reel" data-choix-reel="count"><div class="deposit-slot-strip"></div></div>
+                      <div class="deposit-slot-reel" data-choix-reel="stake"><div class="deposit-slot-strip"></div></div>
+                      <div class="deposit-slot-payline" aria-hidden="true"></div>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
+                  <button class="bet-btn" type="button" onclick="choixSlotSpin()" style="border-color:var(--gold);color:var(--gold);">LANCER LES ROULEAUX</button>
+                </div>
+                <div class="dep-result choix-result">Coche tes options, puis lance les rouleaux.</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="hunt-tab-tournoi" class="hunt-tab-panel">
+            <div class="hunt-tab-scroll page-content">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+                <div>
+                  <div class="mise-section-title" style="margin:0;">TOURNOI BONUS HUNT</div>
+                  <div class="bj-rec" style="margin-top:6px;">Classement mensuel (Europe/Paris) &amp; soumission de hunts</div>
+                </div>
+                <button class="open-btn" type="button" onclick="showSubmitTournoi()"><span>+ SOUMETTRE MON HUNT</span></button>
+              </div>
+              <div class="mise-section">
+                <div class="mise-section-title" id="tournoi-podium-title">PODIUM DU MOIS PRÉCÉDENT</div>
+                <div class="bj-rec" id="tournoi-podium-sub" style="margin-bottom:10px;"></div>
+                <div id="tournoi-podium-prev"></div>
+              </div>
+              <div class="mise-section" style="margin-top:18px;">
+                <div class="mise-section-title" id="tournoi-current-title">CLASSEMENT DU MOIS EN COURS</div>
+                <div class="bj-rec" id="tournoi-current-sub" style="margin-bottom:10px;"></div>
+                <div id="tournoi-leaderboard"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 

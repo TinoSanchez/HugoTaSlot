@@ -43,6 +43,7 @@ const state = {
   pendingSlot: null,
   bonusView: { status: 'all', type: 'all', sort: 'order', q: '', provider: '', minStake: '', maxStake: '' },
   huntListView: { q: '' },
+  huntTab: 'workspace',
   catalogMode: 'gamdom',
 };
 
@@ -809,7 +810,10 @@ function loadLocal() {
   } catch(e) { state.hunts = []; state.activeHuntId = null; }
 }
 
+let __loadInFlight = null;
 async function load() {
+  if (__loadInFlight) return __loadInFlight;
+  __loadInFlight = (async () => {
   loadLocal();
 
   const applyBonusDedupeAfterLoad = () => {
@@ -861,6 +865,12 @@ async function load() {
     bhWarn('Cloud load failed, using local cache', e);
   }
   applyBonusDedupeAfterLoad();
+  })();
+  try {
+    return await __loadInFlight;
+  } finally {
+    __loadInFlight = null;
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -1257,10 +1267,111 @@ function confirmRich(title, html, okText = 'CONFIRMER', cancelText = 'ANNULER') 
 // ═══════════════════════════════════════════════
 //  LOAD SLOTS (with fallback & lazy render)
 // ═══════════════════════════════════════════════
-let renderTimer = null;
 let currentPage = 0;
-const PAGE_SIZE = 80;
+const PAGE_SIZE = 64;
 let catalogScrollDebounce = null;
+let bonusFilterDebounce = null;
+let huntListFilterDebounce = null;
+let __huntUiTimer = null;
+let __huntUiPending = null;
+let __bonusProviderHash = '';
+const __detachedPanels = Object.create(null);
+
+function slotGamdomEligible(s) {
+  const id = String(s.id || s.Id || '').toLowerCase();
+  const url = String(s.gamdomUrl || s.gamdom_url || '').toLowerCase();
+  const img = String(s.image || s.img || s.thumbnail || '').toLowerCase();
+  return id.startsWith('gd_')
+    || id.startsWith('stake_')
+    || url.includes('gamdom.com')
+    || url.includes('stake.com/casino/games/')
+    || img.includes('cdn.hub88.io')
+    || img.includes('ppgames.net')
+    || img.includes('thumbs.alea.com')
+    || img.includes('gamdom.com/static/dyn/');
+}
+
+function buildSlotCatalogIndexes(slots) {
+  state.searchIndex = [];
+  state.slotMeta = [];
+  state.slotRefIndex = new Map();
+  state.gamdomSlotIndices = [];
+  const providerCounts = new Map();
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i] || {};
+    const nom = (s.nom || s.name || s.title || s.Name || '').toLowerCase();
+    const provRaw = (s.provider || s.Provider || '');
+    const prov = String(provRaw).toLowerCase();
+    const gamdomEligible = slotGamdomEligible(s);
+    state.searchIndex.push({ nom, prov });
+    state.slotMeta.push({ gamdomEligible });
+    state.slotRefIndex.set(slots[i], i);
+    if (gamdomEligible) state.gamdomSlotIndices.push(i);
+    if (provRaw) providerCounts.set(provRaw, (providerCounts.get(provRaw) || 0) + 1);
+  }
+  return providerCounts;
+}
+
+function huntWorkspaceFingerprint() {
+  const h = activeHunt();
+  if (!h) return '';
+  const opened = (h.bonuses || []).filter((b) => b.win !== null).length;
+  return `${h.id}:${(h.bonuses || []).length}:${opened}:${state.bonusView.q}:${state.bonusView.status}`;
+}
+
+function scheduleHuntUI(opts = {}) {
+  __huntUiPending = { ...(__huntUiPending || {}), ...opts };
+  clearTimeout(__huntUiTimer);
+  __huntUiTimer = setTimeout(() => {
+    const pending = __huntUiPending || {};
+    __huntUiPending = null;
+    flushHuntUI(pending);
+  }, 40);
+}
+
+async function flushHuntUI(opts = {}) {
+  renderHuntList();
+  if (!state.activeHuntId) return;
+  if (__activePage !== 'hunt' || state.huntTab !== 'workspace') return;
+  if (opts.loadCatalog) {
+    try { await ensureSlotsLoaded(); } catch (_) {}
+  }
+  const fp = huntWorkspaceFingerprint();
+  if (!opts.force && fp === state._huntWsFp) return;
+  state._huntWsFp = fp;
+  renderHuntWorkspace(true);
+}
+
+function stashPageMount() {
+  const mount = document.getElementById('page-mount');
+  if (!mount || !mount.firstElementChild) return;
+  const panel = mount.firstElementChild;
+  const cacheKey = panel.id === 'page-jeux' ? 'jeux' : null;
+  if (cacheKey) {
+    __detachedPanels[cacheKey] = panel;
+    mount.removeChild(panel);
+  } else {
+    mount.innerHTML = '';
+  }
+}
+
+function mountCachedPage(page) {
+  const mount = document.getElementById('page-mount');
+  if (!mount || !__PAGE_HTML[page]) return null;
+  if (__detachedPanels[page]) {
+    mount.innerHTML = '';
+    mount.appendChild(__detachedPanels[page]);
+    delete __detachedPanels[page];
+    const panel = mount.firstElementChild;
+    if (panel) panel.classList.add('active');
+    return panel;
+  }
+  mount.innerHTML = __PAGE_HTML[page];
+  const panel = mount.firstElementChild;
+  if (panel) panel.classList.add('active', 'anim-in');
+  setTimeout(() => panel?.classList.remove('anim-in'), 320);
+  return panel;
+}
 let netBannerEl = null;
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -1786,25 +1897,30 @@ async function loadSlots() {
   const loader = document.getElementById('grid-loader');
   const loaderText = document.getElementById('loader-text');
   const errState = document.getElementById('error-state');
-  loader.classList.remove('hidden');
-  errState.classList.add('hidden');
-  document.getElementById('slots-grid').innerHTML = '';
+  const grid = document.getElementById('slots-grid');
+  if (loader) loader.classList.remove('hidden');
+  if (errState) errState.classList.add('hidden');
+  if (grid) grid.innerHTML = '';
 
   // Animated loading messages
   const loadMsgs = ['CHARGEMENT DES SLOTS...', 'PARSING 7000+ ENTRÉES...', 'INDEXATION DES PROVIDERS...', 'OPTIMISATION DE LA GRILLE...'];
   let msgIdx = 0;
-  const msgTimer = setInterval(() => { msgIdx = (msgIdx + 1) % loadMsgs.length; loaderText.textContent = loadMsgs[msgIdx]; }, 600);
+  const msgTimer = setInterval(() => {
+    msgIdx = (msgIdx + 1) % loadMsgs.length;
+    if (loaderText) loaderText.textContent = loadMsgs[msgIdx];
+  }, 600);
 
   try {
     let data = null;
 
-    // 1) Try fetching jeux.json quickly in parallel (prevents long spinner stalls).
+    // 1) Un seul fetch à la fois (évite 3× le même JSON en parallèle).
     const paths = ['jeux.json', './jeux.json', '/jeux.json'];
-    const fetches = paths.map((p) =>
-      fetchJSONWithRetry(p, { retries: 0, timeoutMs: 2500 }).then((d) => d).catch(() => null)
-    );
-    const fetched = await Promise.all(fetches);
-    data = fetched.find(Boolean) || null;
+    for (const p of paths) {
+      try {
+        data = await fetchJSONWithRetry(p, { retries: 0, timeoutMs: 3500 });
+        if (data) break;
+      } catch (_) { /* chemin suivant */ }
+    }
 
     // 2) Secours : jeux-embed.js (~2 Mo), chargé uniquement si jeux.json indisponible
     if (!data) {
@@ -1825,45 +1941,20 @@ async function loadSlots() {
         provider: providers[i % providers.length],
         image: ''
       }));
-      errState.classList.remove('hidden');
-      errState.innerHTML = `
+      if (errState) {
+        errState.classList.remove('hidden');
+        errState.innerHTML = `
         <div class="error-banner">
           ℹ Base de données introuvable : fallback 7000 slots chargée.
         </div>`;
-    } else {
+      }
+    } else if (errState) {
       errState.classList.add('hidden');
     }
 
     const rawSlots = Array.isArray(data) ? data : (data.slots || data.games || []);
     state.slots = rawSlots.map((s) => normalizeCatalogEntry(s));
-    state.searchIndex = [];
-    state.slotMeta = [];
-    state.slotRefIndex = new Map();
-
-    const providerCounts = new Map();
-    for (let i = 0; i < state.slots.length; i++) {
-      const s = state.slots[i] || {};
-      const nom = (s.nom || s.name || s.title || s.Name || '').toLowerCase();
-      const provRaw = (s.provider || s.Provider || '');
-      const prov = String(provRaw).toLowerCase();
-      const id = String(s.id || s.Id || '').toLowerCase();
-      const url = String(s.gamdomUrl || '').toLowerCase();
-      const img = String(s.image || s.img || s.thumbnail || '').toLowerCase();
-      // Tout lien gamdom.com (jeu direct, /casino/slug, /slots/search?q=…) reste dans le catalogue « Gamdom pur ».
-      const gamdomEligible = id.startsWith('gd_')
-        || id.startsWith('stake_')
-        || url.includes('gamdom.com')
-        || url.includes('stake.com/casino/games/')
-        || img.includes('cdn.hub88.io')
-        || img.includes('ppgames.net')
-        || img.includes('thumbs.alea.com')
-        || img.includes('gamdom.com/static/dyn/');
-
-      state.searchIndex.push({ nom, prov });
-      state.slotMeta.push({ gamdomEligible });
-      state.slotRefIndex.set(state.slots[i], i);
-      if (provRaw) providerCounts.set(provRaw, (providerCounts.get(provRaw) || 0) + 1);
-    }
+    const providerCounts = buildSlotCatalogIndexes(state.slots);
 
     // Build provider list (single pass counts, much faster).
     const providers = Array.from(providerCounts.keys()).sort();
@@ -1879,18 +1970,21 @@ async function loadSlots() {
     }
 
     filterAndRender();
+    state._huntWsFp = '';
     try {
-      if (state.activeHuntId && activeHunt()) renderHuntWorkspace();
+      if (state.activeHuntId && activeHunt()) scheduleHuntUI({ force: true });
     } catch (_) {}
   } catch (e) {
     console.error('loadSlots fatal', e);
-    errState.classList.remove('hidden');
-    errState.innerHTML = `<div class="error-banner">Erreur de chargement des slots. Recharge la page.</div>`;
+    if (errState) {
+      errState.classList.remove('hidden');
+      errState.innerHTML = `<div class="error-banner">Erreur de chargement des slots. Recharge la page.</div>`;
+    }
     state.slots = [];
     state.filteredSlots = [];
   } finally {
     clearInterval(msgTimer);
-    loader.classList.add('hidden');
+    if (loader) loader.classList.add('hidden');
   }
 }
 
@@ -2037,7 +2131,7 @@ function filterAndRender() {
   const prov = document.getElementById('provider-filter').value.toLowerCase();
   const sourceFiltered = state.catalogMode === 'extended'
     ? state.slots
-    : state.slots.filter((_, i) => state.slotMeta[i]?.gamdomEligible);
+    : (state.gamdomSlotIndices || []).map((i) => state.slots[i]).filter(Boolean);
 
   if (!q && !prov) {
     state.filteredSlots = sourceFiltered;
@@ -2201,29 +2295,33 @@ document.getElementById('bonus-sort').addEventListener('change', (e) => {
   const h = activeHunt();
   if (h) renderBonusList(h);
 });
+function scheduleBonusFilterRender() {
+  clearTimeout(bonusFilterDebounce);
+  bonusFilterDebounce = setTimeout(() => {
+    save();
+    state._huntWsFp = '';
+    const h = activeHunt();
+    if (h) renderBonusList(h);
+  }, 150);
+}
 document.getElementById('bonus-search-filter').addEventListener('input', (e) => {
   state.bonusView.q = String(e.target.value || '').trim().toLowerCase();
-  save();
-  const h = activeHunt();
-  if (h) renderBonusList(h);
+  scheduleBonusFilterRender();
 });
 document.getElementById('bonus-provider-filter').addEventListener('change', (e) => {
   state.bonusView.provider = String(e.target.value || '').toLowerCase();
   save();
+  state._huntWsFp = '';
   const h = activeHunt();
   if (h) renderBonusList(h);
 });
 document.getElementById('bonus-min-stake').addEventListener('input', (e) => {
   state.bonusView.minStake = String(e.target.value || '').trim();
-  save();
-  const h = activeHunt();
-  if (h) renderBonusList(h);
+  scheduleBonusFilterRender();
 });
 document.getElementById('bonus-max-stake').addEventListener('input', (e) => {
   state.bonusView.maxStake = String(e.target.value || '').trim();
-  save();
-  const h = activeHunt();
-  if (h) renderBonusList(h);
+  scheduleBonusFilterRender();
 });
 document.getElementById('bonus-filter-presets').addEventListener('change', (e) => {
   const idx = Number(e.target.value);
@@ -2606,7 +2704,7 @@ function renderHuntList() {
   const list = document.getElementById('hunt-list');
   const empty = document.getElementById('hunts-empty');
   const qEl = document.getElementById('hunt-filter-q');
-  if (qEl) qEl.value = state.huntListView?.q || '';
+  if (qEl && document.activeElement !== qEl) qEl.value = state.huntListView?.q || '';
   list.querySelectorAll('.hunt-item').forEach(e => e.remove());
   if (state.hunts.length === 0) { empty.style.display = 'flex'; return; }
   empty.style.display = 'none';
@@ -2646,12 +2744,13 @@ function renderHuntList() {
   if (!shown.length) empty.style.display = 'flex';
 }
 
-function selectHunt(id) {
+function selectHunt(id, opts = {}) {
   state.activeHuntId = id;
   save();
-  renderHuntList();
+  state._huntWsFp = '';
+  if (!opts.skipList) renderHuntList();
   refreshCurrencyInline();
-  renderHuntWorkspace();
+  if (!opts.skipWorkspace) scheduleHuntUI({ loadCatalog: !state.slots?.length, force: true });
   document.getElementById('no-hunt-selected').style.display = 'none';
   document.getElementById('hunt-workspace').classList.remove('hidden');
   document.getElementById('hunt-workspace').style.display = 'flex';
@@ -2719,7 +2818,8 @@ document.getElementById('new-hunt-bal-input').addEventListener('input', updateNe
 document.getElementById('new-hunt-currency').addEventListener('change', updateNewHuntCurrencyHint);
 document.getElementById('hunt-filter-q').addEventListener('input', (e) => {
   state.huntListView.q = String(e.target.value || '');
-  renderHuntList();
+  clearTimeout(huntListFilterDebounce);
+  huntListFilterDebounce = setTimeout(() => renderHuntList(), 120);
 });
 document.getElementById('new-hunt-template').addEventListener('change', (e) => {
   const idx = Number(e.target.value);
@@ -2784,10 +2884,16 @@ function createNewHunt() {
   state.hunts.push(hunt);
   document.getElementById('new-hunt-modal').classList.add('hidden');
   save();
+  state.activeHuntId = hunt.id;
   renderHuntList();
   refreshCurrencyInline();
   switchPage('hunt');
-  selectHunt(hunt.id);
+  document.getElementById('no-hunt-selected').style.display = 'none';
+  document.getElementById('hunt-workspace').classList.remove('hidden');
+  document.getElementById('hunt-workspace').style.display = 'flex';
+  const openBtn = document.getElementById('btn-open-hunt');
+  if (openBtn) openBtn.disabled = false;
+  scheduleHuntUI({ loadCatalog: true, force: true });
   showToast(`Hunt "${name}" créé !`, 'success');
 }
 
@@ -2957,7 +3063,8 @@ function createCustomSlotBonus() {
 // ═══════════════════════════════════════════════
 //  HUNT WORKSPACE RENDER
 // ═══════════════════════════════════════════════
-function renderHuntWorkspace() {
+function renderHuntWorkspace(force = false) {
+  if (!force && (__activePage !== 'hunt' || state.huntTab !== 'workspace')) return;
   const hunt = activeHunt();
   if (!hunt) return;
   refreshCurrencyInline();
@@ -2973,8 +3080,12 @@ function renderHuntWorkspace() {
   if (_openBtnHeader) _openBtnHeader.disabled = false;
 
   document.getElementById('current-hunt-name').textContent = hunt.name;
+  const created = new Date(hunt.createdAt);
+  const dateStr = created.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const timeStr = created.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const eurHint = Number(hunt.startBalanceEUR || toEUR(hunt.startBalance || 0, hunt.currency || 'EUR')).toFixed(0);
   document.getElementById('current-hunt-date').textContent =
-    `${new Date(hunt.createdAt).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})} · Départ ${fmt(hunt.startBalance, hunt.currency)} (≈ ${Number(hunt.startBalanceEUR || toEUR(hunt.startBalance || 0, hunt.currency || 'EUR')).toFixed(2).replace('.', ',')}€)`;
+    `${dateStr} ${timeStr} · ${fmt(hunt.startBalance, hunt.currency)} (≈${eurHint}€)`;
 
   updateHeaderStats(hunt);
   renderBonusList(hunt);
@@ -2994,6 +3105,7 @@ function renderHuntWorkspace() {
       } else if (!addedIds.has(id) && dot) dot.remove();
     });
   }
+  state._huntWsFp = huntWorkspaceFingerprint();
 }
 
 function updateHeaderStats(hunt) {
@@ -3079,10 +3191,15 @@ function renderBonusList(hunt) {
   const providerFilterEl = document.getElementById('bonus-provider-filter');
   if (providerFilterEl) {
     const providers = [...new Set((hunt.bonuses || []).map((b) => String(b.slotProvider || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
-    providerFilterEl.innerHTML = ['<option value="">Provider: tous</option>']
-      .concat(providers.map((p) => `<option value="${escapeHtml(p.toLowerCase())}">${escapeHtml(p)}</option>`))
-      .join('');
-    providerFilterEl.value = String(provider || '').toLowerCase();
+    const hash = providers.join('|');
+    if (hash !== __bonusProviderHash) {
+      __bonusProviderHash = hash;
+      providerFilterEl.innerHTML = ['<option value="">Provider: tous</option>']
+        .concat(providers.map((p) => `<option value="${escapeHtml(p.toLowerCase())}">${escapeHtml(p)}</option>`))
+        .join('');
+    }
+    const want = String(provider || '').toLowerCase();
+    if (providerFilterEl.value !== want) providerFilterEl.value = want;
   }
   if (status === 'pending') shown = shown.filter(x => x.bonus.win === null);
   if (status === 'opened') shown = shown.filter(x => x.bonus.win !== null);
@@ -3741,12 +3858,6 @@ async function init() {
     document.getElementById('hunt-workspace').style.display = 'flex';
     const openBtn = document.getElementById('btn-open-hunt');
     if (openBtn) openBtn.disabled = false;
-    // Ne rend le workspace tout de suite QUE si on arrive directement sur /hunt.
-    // Sinon le render aura lieu lors du switchPage('hunt') quand l'utilisateur cliquera.
-    if (initialPageGuess === 'hunt') {
-      try { await ensureSlotsLoaded(); } catch (_) {}
-      try { renderHuntWorkspace(); } catch (_) {}
-    }
   }
   flushFeedbackQueue().catch(() => {});
 }
@@ -3755,7 +3866,10 @@ async function init() {
 try { localStorage.removeItem('hm_users_v1'); } catch (_) {}
 try { localStorage.removeItem('hm_admin_bootstrap_v1'); } catch (_) {}
 
-init();
+init().catch((e) => {
+  bhWarn('init failed', e);
+  pushRuntimeLog('error', `init: ${String(e?.message || e || 'unknown')}`);
+});
 
 // ═══════════════════════════════════════════════════════════
 //  HUNT MASTER v1.01 — NOUVELLES FONCTIONNALITÉS
@@ -3771,6 +3885,7 @@ const PAGE_TO_SLUG = Object.freeze({
   blackjack: 'blackjack',
   mise: 'mise-optimale',
   roue_depot: 'roue-depot',
+  slot_choix: 'slot-choix',
   tournoi: 'tournoi',
   stats: 'stats',
   jeux: 'mini-jeux',
@@ -3778,6 +3893,8 @@ const PAGE_TO_SLUG = Object.freeze({
   news: 'actualites',
   review: 'review',
   admin: 'admin',
+  roue_multi: 'roue-multi-tirages',
+  roue_tournoi_equipes: 'roue-tournoi-equipes',
 });
 const SLUG_TO_PAGE = (() => {
   const m = Object.create(null);
@@ -3790,6 +3907,7 @@ const PAGE_TITLES = Object.freeze({
   blackjack: 'Tableau Blackjack',
   mise: 'Mise Optimale',
   roue_depot: 'Roue du Dépôt',
+  slot_choix: 'Slot des Choix',
   tournoi: 'Tournoi',
   stats: 'Statistiques',
   jeux: 'Mini Jeux',
@@ -3797,6 +3915,8 @@ const PAGE_TITLES = Object.freeze({
   news: 'Actualités',
   review: 'Review',
   admin: 'Admin',
+  roue_multi: 'Roue Multi-Tirages',
+  roue_tournoi_equipes: 'Roue Tournoi Équipes',
 });
 const SITE_NAME = 'HugoTaSlot X 19EnPlein';
 function pageToPath(page) {
@@ -3812,8 +3932,197 @@ function setDocumentTitleForPage(page) {
   try { document.title = sub ? `${sub} — ${SITE_NAME}` : SITE_NAME; } catch (_) {}
 }
 
+const HUNT_TAB_FROM_PAGE = Object.freeze({
+  mise: 'mise',
+  roue_depot: 'depot',
+  slot_choix: 'choix',
+  tournoi: 'tournoi',
+});
+const HUNT_TAB_TO_SLUG = Object.freeze({
+  workspace: 'hunt',
+  mise: 'mise-optimale',
+  depot: 'roue-depot',
+  choix: 'slot-choix',
+  tournoi: 'tournoi',
+});
+const HUNT_TAB_TITLES = Object.freeze({
+  workspace: 'Bonus Hunt',
+  mise: 'Mise Optimale',
+  depot: 'Slot du Dépôt',
+  choix: 'Slot des Choix',
+  tournoi: 'Tournoi',
+});
+
+function normalizeHuntTab(tab) {
+  const t = String(tab || 'workspace').toLowerCase();
+  return ['workspace', 'mise', 'depot', 'choix', 'tournoi'].includes(t) ? t : 'workspace';
+}
+function huntTabToPath(tab) {
+  const slug = HUNT_TAB_TO_SLUG[normalizeHuntTab(tab)] || 'hunt';
+  return slug === 'hunt' ? '/hunt' : `/${slug}`;
+}
+function pathToHuntTab(path) {
+  const page = pathToPage(path);
+  if (page === 'hunt') return 'workspace';
+  return HUNT_TAB_FROM_PAGE[page] || null;
+}
+/** Onglet hunt à ouvrir selon le lien cliqué (pas le dernier onglet mémorisé). */
+function resolveHuntTabForNavigation(requestedPage, opts) {
+  opts = opts || {};
+  if (opts.huntTab != null) return normalizeHuntTab(opts.huntTab);
+  if (HUNT_TAB_FROM_PAGE[requestedPage]) return HUNT_TAB_FROM_PAGE[requestedPage];
+  if (requestedPage === 'hunt') return 'workspace';
+  const fromPath = pathToHuntTab(location.pathname);
+  if (fromPath) return fromPath;
+  return 'workspace';
+}
+function sidebarPageKey(page) {
+  if (page !== 'hunt') return page;
+  return state.huntTab === 'depot' ? 'roue_depot' : 'hunt';
+}
+function syncSidebarActivePage(page) {
+  const key = sidebarPageKey(page);
+  document.querySelectorAll('.sidebar-tab').forEach((t) => {
+    t.classList.remove('active');
+    t.removeAttribute('aria-current');
+  });
+  document.querySelectorAll(`[data-page="${key}"]`).forEach((t) => {
+    t.classList.add('active');
+    if (t.classList.contains('sidebar-tab')) t.setAttribute('aria-current', 'page');
+  });
+}
+function setDocumentTitleForHuntTab(tab) {
+  const sub = HUNT_TAB_TITLES[normalizeHuntTab(tab)] || PAGE_TITLES.hunt;
+  try { document.title = sub ? `${sub} — ${SITE_NAME}` : SITE_NAME; } catch (_) {}
+}
+function showHuntHub() {
+  const hub = document.getElementById('hunt-hub');
+  if (hub) { hub.classList.add('active'); hub.style.display = 'flex'; }
+  stashPageMount();
+}
+function hideHuntHub() {
+  const hub = document.getElementById('hunt-hub');
+  if (hub) { hub.classList.remove('active'); hub.style.display = 'none'; }
+}
+function runHuntTabInit(tab) {
+  const t = normalizeHuntTab(tab);
+  if (t === 'mise') {
+    return loadLazyPageScript('mise').then(() => {
+      const balInput = document.getElementById('m-balance');
+      if (balInput && (!balInput.value || Number(balInput.value) <= 0)) {
+        balInput.value = Math.max(1, Number(getUserBalance() || 100)).toFixed(2);
+      }
+      if (typeof calcMise === 'function') calcMise();
+    }).catch(() => {});
+  }
+  if (t === 'depot') {
+    return loadLazyPageScript('roue_depot').then(() => {
+      if (typeof initDepositWheel === 'function') initDepositWheel();
+    }).catch(() => {});
+  }
+  if (t === 'choix') {
+    return loadLazyPageScript('slot_choix').then(() => {
+      const p = typeof ensureSlotsLoaded === 'function'
+        ? ensureSlotsLoaded().catch(() => {})
+        : Promise.resolve();
+      return p.then(() => {
+        if (typeof initChoixSlot === 'function') initChoixSlot();
+      });
+    }).catch(() => {});
+  }
+  if (t === 'tournoi') {
+    return loadLazyPageScript('tournoi').then(() => {
+      if (typeof renderTournoiLeaderboard === 'function') renderTournoiLeaderboard();
+    }).catch(() => {});
+  }
+  if (t === 'workspace') {
+    return ensureSlotsLoaded().then(() => {
+      scheduleHuntUI({ force: false });
+    }).catch(() => {});
+  }
+  return Promise.resolve();
+}
+function switchHuntTab(tab, opts) {
+  opts = opts || {};
+  tab = normalizeHuntTab(tab);
+  state.huntTab = tab;
+  document.querySelectorAll('.hunt-hub-tab').forEach((btn) => {
+    const on = normalizeHuntTab(btn.dataset.huntTab) === tab;
+    btn.classList.toggle('active', on);
+    if (on) btn.setAttribute('aria-current', 'true');
+    else btn.removeAttribute('aria-current');
+  });
+  document.querySelectorAll('.hunt-tab-panel').forEach((panel) => {
+    const panelTab = String(panel.id || '').replace('hunt-tab-', '');
+    const on = panelTab === tab;
+    panel.classList.toggle('active', on);
+    panel.hidden = !on;
+    panel.style.display = on ? '' : 'none';
+  });
+  const content = document.getElementById('content');
+  const noHunt = document.getElementById('no-hunt-selected');
+  if (tab === 'workspace') {
+    if (content) content.style.display = 'flex';
+    if (noHunt) noHunt.style.display = state.activeHuntId ? 'none' : 'flex';
+  } else {
+    if (content) content.style.display = 'none';
+    if (noHunt) noHunt.style.display = 'none';
+  }
+  const statsBar = document.getElementById('stats-bar');
+  const openHdr = document.getElementById('btn-open-hunt-header');
+  const titleMain = document.getElementById('current-hunt-name');
+  const titleSub = document.getElementById('current-hunt-date');
+  if (statsBar) statsBar.style.display = tab === 'workspace' ? '' : 'none';
+  if (openHdr) openHdr.style.display = tab === 'workspace' ? '' : 'none';
+  if (tab !== 'workspace' && titleMain && titleSub) {
+    const tabTitles = { mise: 'MISE OPTIMALE', depot: 'SLOT DU DÉPÔT', choix: 'SLOT DES CHOIX', tournoi: 'TOURNOI BONUS HUNT' };
+    titleMain.textContent = tabTitles[tab] || 'BONUS HUNT';
+    const h = activeHunt();
+    titleSub.textContent = h ? h.name : 'Outil intégré au hub Bonus Hunt';
+  } else if (tab === 'workspace' && titleMain && titleSub) {
+    const h = activeHunt();
+    if (h) {
+      titleMain.textContent = h.name;
+      const created = new Date(h.createdAt);
+      const dateStr = created.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const timeStr = created.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      const eurHint = Number(h.startBalanceEUR || toEUR(h.startBalance || 0, h.currency || 'EUR')).toFixed(0);
+      titleSub.textContent = `${dateStr} ${timeStr} · ${fmt(h.startBalance, h.currency)} (≈${eurHint}€)`;
+    } else {
+      titleMain.textContent = '— SÉLECTIONNER UN HUNT —';
+      titleSub.textContent = '';
+    }
+  }
+  if (!opts.skipInit) runHuntTabInit(tab);
+  if (!opts.skipTitle) setDocumentTitleForHuntTab(tab);
+  if (!opts.skipSidebar && __activePage === 'hunt') syncSidebarActivePage('hunt');
+}
+function initHuntHubTabs() {
+  const nav = document.getElementById('hunt-hub-tabs');
+  if (!nav || nav.dataset.bound) return;
+  nav.dataset.bound = '1';
+  nav.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-hunt-tab]');
+    if (!btn) return;
+    const tab = normalizeHuntTab(btn.dataset.huntTab);
+    switchHuntTab(tab);
+    try {
+      const path = huntTabToPath(tab);
+      if (location.pathname !== path) {
+        history.pushState({ page: 'hunt', huntTab: tab }, '', path);
+      }
+      setDocumentTitleForHuntTab(tab);
+    } catch (_) {}
+  });
+}
+
 function switchPage(page, opts) {
   opts = opts || {};
+  const requestedPage = page;
+  let huntTab = resolveHuntTabForNavigation(requestedPage, opts);
+  if (HUNT_TAB_FROM_PAGE[requestedPage]) {
+    page = 'hunt';
+  }
   if (page === 'admin' && !isCurrentUserAdmin()) {
     page = 'home';
     showToast('Accès admin requis', 'error');
@@ -3825,45 +4134,32 @@ function switchPage(page, opts) {
     }
   } catch (e) { /* noop */ }
   document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active', 'anim-in'));
-  document.querySelectorAll('.sidebar-tab').forEach((t) => {
-    t.classList.remove('active');
-    t.removeAttribute('aria-current');
-  });
-
-  // Gestion du main hunt workspace vs nouvelles pages
-  const mainIds = ['no-hunt-selected', 'hunt-workspace'];
-  const mainHeader = document.getElementById('header');
 
   if (page === 'hunt') {
-    mainIds.forEach(id => {
+    showHuntHub();
+    const mainIds = ['no-hunt-selected', 'hunt-workspace'];
+    mainIds.forEach((id) => {
       const el = document.getElementById(id);
-      if (el && id === 'no-hunt-selected' && !state.activeHuntId) el.style.display = 'flex';
-      else if (el && id === 'hunt-workspace' && state.activeHuntId) {
-        el.classList.remove('hidden'); el.style.display = 'flex';
+      if (!el) return;
+      if (id === 'no-hunt-selected') el.style.display = state.activeHuntId ? 'none' : 'flex';
+      else if (id === 'hunt-workspace') {
+        if (state.activeHuntId) {
+          el.classList.remove('hidden');
+          el.style.display = 'flex';
+        } else {
+          el.classList.add('hidden');
+          el.style.display = 'none';
+        }
       }
     });
-    if (mainHeader) mainHeader.style.display = 'flex';
     const content = document.getElementById('content');
     if (content) content.style.display = 'flex';
+    switchHuntTab(huntTab, { skipTitle: true, skipInit: opts.skipHuntTabInit, skipSidebar: true });
+    setDocumentTitleForHuntTab(state.huntTab);
   } else {
-    mainIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) { el.style.display = 'none'; }
-    });
-    if (mainHeader) mainHeader.style.display = 'none';
-    const content = document.getElementById('content');
-    if (content) content.style.display = 'none';
-
-    // Injection dynamique du HTML de la page dans #page-mount
-    const __mount = document.getElementById('page-mount');
-    if (__mount && __PAGE_HTML[page]) {
-      __mount.innerHTML = __PAGE_HTML[page];
-      const panel = __mount.firstElementChild;
-      if (panel) {
-        panel.classList.add('active', 'anim-in');
-        setTimeout(() => panel.classList.remove('anim-in'), 320);
-      }
-    }
+    hideHuntHub();
+    stashPageMount();
+    mountCachedPage(page);
 
     // Lazy load + rendu : le script de la page est chargé (si dans LAZY_PAGE_SCRIPTS),
     // PUIS la fonction de rendu est appelée. Pour les pages sans lazy script, la promesse
@@ -3871,22 +4167,13 @@ function switchPage(page, opts) {
     const __renderFn = (function buildPageRender(p) {
       switch (p) {
         case 'blackjack': return () => { if (typeof renderBJTable === 'function') renderBJTable(); };
-        case 'mise': return () => {
-          const balInput = document.getElementById('m-balance');
-          if (balInput && (!balInput.value || Number(balInput.value) <= 0)) {
-            balInput.value = Math.max(1, Number(getUserBalance() || 100)).toFixed(2);
-          }
-          if (typeof calcMise === 'function') calcMise();
-        };
-        case 'roue_depot': return () => { if (typeof initDepositWheel === 'function') initDepositWheel(); };
         case 'jeux': return () => { if (typeof renderGamesLobby === 'function') renderGamesLobby(); };
         case 'stats': return () => { if (typeof renderStatsPage === 'function') renderStatsPage(); };
-        case 'tournoi': return () => { if (typeof renderTournoiLeaderboard === 'function') renderTournoiLeaderboard(); };
         case 'admin': return () => { if (typeof renderAdminPanel === 'function') renderAdminPanel(); };
         case 'home': return () => { if (typeof renderHomeHubMetrics === 'function') renderHomeHubMetrics(); };
         case 'updates': return () => {
           if (typeof renderUpdatesPage === 'function') renderUpdatesPage();
-          if (typeof runSupabaseHealthCheck === 'function') runSupabaseHealthCheck(false);
+          if (typeof runSupabaseHealthCheck === 'function') runSupabaseHealthCheck(false).catch(() => {});
         };
         case 'review': return () => {
           if (typeof renderReviewPage === 'function') renderReviewPage();
@@ -3907,32 +4194,22 @@ function switchPage(page, opts) {
 
     updateLobbyBalance();
   }
-  document.querySelectorAll(`[data-page="${page}"]`).forEach((t) => {
-    t.classList.add('active');
-    if (t.classList.contains('sidebar-tab')) {
-      t.setAttribute('aria-current', 'page');
-    }
-  });
+  syncSidebarActivePage(page);
   closeMobileSidebar();
 
-  setDocumentTitleForPage(page);
+  if (page === 'hunt') setDocumentTitleForHuntTab(state.huntTab);
+  else setDocumentTitleForPage(page);
   if (!opts.skipHistory) {
-    const path = pageToPath(page);
+    const path = page === 'hunt' ? huntTabToPath(state.huntTab) : pageToPath(page);
+    const histState = page === 'hunt' ? { page: 'hunt', huntTab: state.huntTab } : { page };
     try {
       if (location.pathname !== path) {
-        if (opts.replace) history.replaceState({ page }, '', path);
-        else history.pushState({ page }, '', path);
-      } else if (!history.state || history.state.page !== page) {
-        history.replaceState({ page }, '', path);
+        if (opts.replace) history.replaceState(histState, '', path);
+        else history.pushState(histState, '', path);
+      } else if (!history.state || history.state.page !== page || (page === 'hunt' && history.state.huntTab !== state.huntTab)) {
+        history.replaceState(histState, '', path);
       }
     } catch (_) { /* history API indisponible : ignore */ }
-  }
-  if (page === 'hunt') {
-    ensureSlotsLoaded().then(() => {
-      if (state.activeHuntId && typeof renderHuntWorkspace === 'function') {
-        try { renderHuntWorkspace(); } catch (_) {}
-      }
-    }).catch(() => {});
   }
   __activePage = page;
 }
@@ -3979,7 +4256,7 @@ const __PAGE_HTML = {
         <img src="./assets/gamdom-tower.png" class="home-partner-tower" alt="">
         <div class="home-partner-text">
           <div class="home-partner-label">PARTENAIRE OFFICIEL</div>
-          <img src="./assets/gamdom-logo-white.png" class="home-partner-logo" alt="Gamdom">
+          <img src="./assets/gamdom-logo-white-transparent.png" class="home-partner-logo" alt="Gamdom">
         </div>
         <span class="home-partner-cta">JOUER SUR GAMDOM →</span>
       </a>
@@ -3994,7 +4271,7 @@ const __PAGE_HTML = {
         </div>
         <div class="home-card">
           <div class="home-card-head"><img src="./assets/icon-games.svg" class="ui-logo-icon" alt=""><div class="home-card-title">OUTILS INTÉGRÉS</div></div>
-          <div class="home-card-text">Mise optimale, tournoi, mini-jeux et gestion complète des sessions.</div>
+          <div class="home-card-text">Sessions, mise optimale, slot dépôt, tournoi et mini-jeux — tout regroupé dans le hub Bonus Hunt.</div>
         </div>
       </div>
       <div class="hub-kpi-grid" id="home-kpi-grid">
@@ -4006,18 +4283,18 @@ const __PAGE_HTML = {
         <div class="hub-kpi"><div class="hub-kpi-l">PROFIT 30J</div><div class="hub-kpi-v" id="home-kpi-profit-30d">0,00€</div></div>
       </div>
     </div>
-    <div class="mise-section">
+    <div class="mise-section home-quick-panel">
       <div class="mise-section-title">COMMANDES RAPIDES</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div class="home-quick-cmds">
         <button class="play-btn" onclick="showNewHuntModal()">+ NOUVEAU HUNT</button>
-        <button class="modal-btn secondary" onclick="switchPage('hunt')" style="height:44px;padding:0 18px;">ALLER AU BONUS HUNT</button>
-        <button class="modal-btn secondary" onclick="switchPage('blackjack')" style="height:44px;padding:0 18px;">TABLEAU BJ</button>
-        <button class="modal-btn secondary" onclick="switchPage('mise')" style="height:44px;padding:0 18px;">MISE OPTIMALE</button>
-        <button class="modal-btn secondary" onclick="switchPage('tournoi')" style="height:44px;padding:0 18px;">TOURNOI</button>
-        <button class="modal-btn secondary" onclick="switchPage('jeux')" style="height:44px;padding:0 18px;">MINI JEUX</button>
-        <button class="modal-btn secondary" onclick="switchPage('updates')" style="height:44px;padding:0 18px;">GROSSES UPDATES</button>
-        <button class="modal-btn secondary" onclick="switchPage('review')" style="height:44px;padding:0 18px;">REVIEW / AVIS</button>
-        <button class="modal-btn secondary" id="home-admin-btn" onclick="switchPage('admin')" style="height:44px;padding:0 18px;display:none;">ADMIN</button>
+        <button class="home-cmd-btn" onclick="switchPage('hunt')">ALLER AU BONUS HUNT</button>
+        <button class="home-cmd-btn" onclick="switchPage('blackjack')">TABLEAU BJ</button>
+        <button class="home-cmd-btn" onclick="switchPage('hunt',{huntTab:'mise'})">MISE OPTIMALE</button>
+        <button class="home-cmd-btn" onclick="switchPage('hunt',{huntTab:'tournoi'})">TOURNOI</button>
+        <button class="home-cmd-btn" onclick="switchPage('jeux')">MINI JEUX</button>
+        <button class="home-cmd-btn" onclick="switchPage('updates')">GROSSES UPDATES</button>
+        <button class="home-cmd-btn" onclick="switchPage('review')">REVIEW / AVIS</button>
+        <button class="home-cmd-btn" id="home-admin-btn" onclick="switchPage('admin')" style="display:none;">ADMIN</button>
       </div>
     </div>
     <div class="mise-section">
@@ -4176,63 +4453,6 @@ const __PAGE_HTML = {
             </div>
         </div>
   `,
-  mise: `
-<div class="page-panel" id="page-mise">
-  <header id="header-mise" style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
-    <div class="hunt-title-area">
-      <div class="hunt-title-main">MISE OPTIMALE</div>
-      <div class="hunt-title-sub">Calcule ta mise idéale pour farmer le Bonus Hunt</div>
-                        </div>
-    <div id="profile-area-mise"></div>
-  </header>
-  <div class="page-content">
-    <div class="mise-section">
-      <div class="mise-section-title">SOLDE UNIQUEMENT</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:20px;">
-        <div class="bj-input-group">
-          <label class="bj-label">SOLDE DISPONIBLE (<span class="currency-symbol-inline">€</span>)</label>
-          <input type="number" class="bj-input" id="m-balance" value="500" min="1" style="width:100%">
-        </div>
-        <div class="bj-input-group">
-          <label class="bj-label">MODE AUTO</label>
-          <div class="bj-rec" style="margin-top:0;padding:10px 12px;font-size:11px;">
-            Le nombre de machines est détecté depuis les bonus de ton hunt actif.
-          </div>
-        </div>
-      </div>
-      <button class="play-btn" onclick="calcMise()" style="height:46px;padding:0 32px;margin:0;">CALCULER</button>
-    </div>
-    <div class="mise-section" id="mise-results" style="display:none;">
-      <div class="mise-section-title">RÉSULTATS</div>
-      <div class="mise-grid" id="mise-grid-content"></div>
-      <div class="bj-rec" id="mise-advice" style="margin-top:16px;"></div>
-                </div>
-            </div>
-        </div>
-  `,
-  tournoi: `
-<div class="page-panel" id="page-tournoi">
-  <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
-    <div class="hunt-title-area">
-      <div class="hunt-title-main">TOURNOI BONUS HUNT</div>
-      <div class="hunt-title-sub">Classement mensuel (Europe/Paris) & soumission de hunts</div>
-    </div>
-    <button class="open-btn" onclick="showSubmitTournoi()"><span>+ SOUMETTRE MON HUNT</span></button>
-  </header>
-  <div class="page-content">
-    <div class="mise-section">
-      <div class="mise-section-title" id="tournoi-podium-title">PODIUM DU MOIS PRÉCÉDENT</div>
-      <div class="bj-rec" id="tournoi-podium-sub" style="margin-bottom:10px;"></div>
-      <div id="tournoi-podium-prev"></div>
-    </div>
-    <div class="mise-section" style="margin-top:18px;">
-      <div class="mise-section-title" id="tournoi-current-title">CLASSEMENT DU MOIS EN COURS</div>
-      <div class="bj-rec" id="tournoi-current-sub" style="margin-bottom:10px;"></div>
-      <div id="tournoi-leaderboard"></div>
-    </div>
-        </div>
-    </div>
-  `,
   stats: `
 <div class="page-panel" id="page-stats">
   <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
@@ -4243,58 +4463,6 @@ const __PAGE_HTML = {
   </header>
   <div class="page-content">
     <div id="stats-root"></div>
-  </div>
-</div>
-  `,
-  roue_depot: `
-<div class="page-panel" id="page-roue_depot">
-  <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
-    <div class="hunt-title-area">
-      <div class="hunt-title-main">SLOT DU DÉPÔT</div>
-      <div class="hunt-title-sub">Max ≤100 : fins 0 ou 5 · 100–300 : multiples de 10 · &gt;300 : …00, 25, 50, 75</div>
-    </div>
-  </header>
-  <div class="page-content">
-    <div class="deposit-wheel-wrap">
-      <div style="font-family:'Rajdhani',sans-serif;font-size:20px;color:var(--gold);text-align:center;">LE SLOT DU DÉPÔT</div>
-      <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);text-align:center;">3 rouleaux, 1 montant · pas de décimales · case 1 = min, case 10 = max.</div>
-      <div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;">
-        <input type="number" class="bj-input" id="dep-min" value="10" min="1" step="1" inputmode="numeric" style="width:110px;" placeholder="Min">
-        <input type="number" class="bj-input" id="dep-max" value="100" min="1" step="1" inputmode="numeric" style="width:110px;" placeholder="Max">
-        <button class="bet-btn" onclick="depositWheelGenerate()">Générer 10 cases</button>
-      </div>
-      <div class="deposit-wheel-grid" id="deposit-wheel-grid">
-        <div class="deposit-wheel-cell" id="dep-cell-1">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-2">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-3">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-4">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-5">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-6">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-7">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-8">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-9">—</div>
-        <div class="deposit-wheel-cell" id="dep-cell-10">—</div>
-      </div>
-      <div class="deposit-slot-stage deposit-slot-stage--empty">
-        <div class="deposit-slot-machine">
-          <div class="deposit-slot-marquee"><span>DÉPÔT</span></div>
-          <div class="deposit-slot-lights" aria-hidden="true">
-            <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-          </div>
-          <div class="deposit-slot-reels">
-            <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
-            <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
-            <div class="deposit-slot-reel"><div class="deposit-slot-strip"></div></div>
-            <div class="deposit-slot-payline" aria-hidden="true"></div>
-          </div>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
-        <button class="bet-btn" onclick="depositWheelSpin()" style="border-color:var(--gold);color:var(--gold);">LANCER LES ROULEAUX</button>
-        <a class="bet-btn" href="https://gamdom.com/fr-fr/?modal=wallet&amp;tab=deposit" target="_blank" rel="noopener noreferrer" style="border-color:var(--blue);color:var(--blue);">Go dépôt</a>
-      </div>
-      <div class="dep-result" style="font-family:'Rajdhani',sans-serif;font-size:18px;color:var(--text-dim);text-align:center;">Génère tes 10 montants pour commencer.</div>
-    </div>
   </div>
 </div>
   `,
@@ -4389,6 +4557,40 @@ const __PAGE_HTML = {
     </div>
   </div>
 </div>
+  `,
+  roue_multi: `
+<div class="page-panel" id="page-roue_multi">
+  <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
+    <div class="hunt-title-area">
+      <div class="hunt-title-main">ROUE MULTI-TIRAGES</div>
+      <div class="hunt-title-sub">La Roue de 19EnPlein — tirages classiques et multi-vainqueurs</div>
+    </div>
+    <div class="roue-script-credit" title="Script par !Bloodz">
+      <span class="roue-script-credit__avatar" aria-hidden="true"></span>
+      <span class="roue-script-credit__name">!Bloodz</span>
+    </div>
+  </header>
+  <div class="page-content page-content--embed">
+    <iframe class="roue-embed-frame" src="./roue-multi-tirages.html" title="La Roue de 19enplein - Multi-Tirages"></iframe>
+  </div>
+</div>
+  `,
+  roue_tournoi_equipes: `
+<div class="page-panel" id="page-roue_tournoi_equipes">
+  <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
+    <div class="hunt-title-area">
+      <div class="hunt-title-main">ROUE TOURNOI ÉQUIPES</div>
+      <div class="hunt-title-sub">19EnPlein — tirage des équipes et suivi des gains</div>
+    </div>
+    <div class="roue-script-credit" title="Script par !Bloodz">
+      <span class="roue-script-credit__avatar" aria-hidden="true"></span>
+      <span class="roue-script-credit__name">!Bloodz</span>
+    </div>
+  </header>
+  <div class="page-content page-content--embed">
+    <iframe class="roue-embed-frame" src="./roue-tournoi-equipes.html" title="19enplein - Roue Tournoi Casino"></iframe>
+  </div>
+</div>
   `
 };
 
@@ -4398,6 +4600,7 @@ const LAZY_PAGE_SCRIPTS = Object.freeze({
   mise:        './scripts/pages/mise.js',
   tournoi:     './scripts/pages/tournoi.js',
   roue_depot:  './scripts/pages/roue-depot.js',
+  slot_choix:  './scripts/pages/slot-choix.js',
   jeux:        './scripts/pages/mini-jeux.js',
   // home, hunt, stats, admin, updates, review, news → pas de lazy (fonctions dans app.js)
 });
@@ -4435,7 +4638,8 @@ function ensureSlotsLoaded() {
   __slotsLoadPromise = loadSlots().catch((e) => {
     console.error('loadSlots failed', e);
     __slotsLoadPromise = null; // permet le retry si l'utilisateur revient
-    throw e;
+    state.slots = state.slots || [];
+    return state.slots;
   });
   return __slotsLoadPromise;
 }
@@ -5995,6 +6199,8 @@ const SESSION_META_KEY = 'hm_session_meta_v1';
 const GUEST_PROFILE_KEY = 'hm_guest_profile_v1';
 const BALANCE_SNAPSHOT_KEY = 'hm_balance_snapshot_v1';
 const BALANCE_SNAPSHOT_BY_USER_KEY = 'hm_balance_snapshot_by_user_v1';
+if (!window.__hmStakePreview) window.__hmStakePreview = Object.create(null);
+window.__hmGameBalAnchor = window.__hmGameBalAnchor ?? null;
 const ADMIN_BOOTSTRAP_KEY = 'hm_admin_bootstrap_v1';
 const UI_PREFS_KEY = 'hm_ui_prefs_v1';
 const FEEDBACK_QUEUE_KEY = 'hm_feedback_queue_v1';
@@ -6144,14 +6350,56 @@ function shouldRejectSuspectServerBalance(serverBal, currentBal, userId = '') {
 }
 function shouldRejectRollbackToGameAnchor(serverBal, currentBal) {
   if (!isCloudUser()) return false;
-  if (activeGameBalanceAnchor === null || activeGameBalanceAnchor === undefined) return false;
+  const anchor = window.__hmGameBalAnchor;
+  if (anchor === null || anchor === undefined) return false;
   const s = Number(serverBal);
   const c = Number(currentBal);
-  const a = Number(activeGameBalanceAnchor);
+  const a = Number(anchor);
   if (!Number.isFinite(s) || !Number.isFinite(c) || !Number.isFinite(a)) return false;
   const isServerAtAnchor = Math.abs(s - a) < 0.0001;
   const currentIsNotAnchor = Math.abs(c - a) > 0.0001;
   return isServerAtAnchor && currentIsNotAnchor;
+}
+function getPersistedBalanceForUser(userId, { isGuest = false } = {}) {
+  const uid = String(userId || '');
+  const disk = getSession();
+  if (uid && disk && String(disk.id) === uid) {
+    const fromDisk = Number(disk.balance);
+    if (Number.isFinite(fromDisk) && fromDisk >= 0) return fromDisk;
+  }
+  if (isGuest) {
+    const gp = getGuestProfile();
+    const fromGuest = Number(gp.balance);
+    if (Number.isFinite(fromGuest) && fromGuest >= 0) return fromGuest;
+  }
+  const snap = getBalanceSnapshot({ userId: uid, isGuest });
+  if (snap !== null) return snap;
+  return null;
+}
+function resolveCloudBalanceMerge(currentBal, serverBal, userId = '') {
+  const persisted = userId ? getPersistedBalanceForUser(userId) : null;
+  const c = Math.max(
+    Number.isFinite(Number(currentBal)) ? Number(currentBal) : 0,
+    persisted !== null && Number.isFinite(Number(persisted)) ? Number(persisted) : 0
+  );
+  const s = Number(serverBal || 0);
+  if (!Number.isFinite(s)) return Number.isFinite(c) ? c : 0;
+  if (!Number.isFinite(c)) return s;
+  if (Math.abs(c - s) < 0.005) return s;
+  // Serveur en retard : ne pas écraser les gains affichés localement.
+  if (s + 0.005 < c) {
+    if (
+      cloudQueuedGameSessions > 0 ||
+      cloudGameSettlementInFlight > 0 ||
+      hasPendingStakePreviews() ||
+      (window.__hmGameBalAnchor !== null && window.__hmGameBalAnchor !== undefined)
+    ) {
+      return c;
+    }
+    pushRuntimeLog('warn', `cloud_balance_keep_local: server=${s.toFixed(2)} local=${c.toFixed(2)}`);
+    return c;
+  }
+  return s;
 }
 function getUiPrefs() {
   try { return JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}'); } catch { return {}; }
@@ -6230,6 +6478,10 @@ async function loadCloudProfile(userId, { force = false } = {}) {
   const roleResolved = String(p?.role || 'player').trim().toLowerCase();
   const statusResolved = String(p?.status || 'active').trim().toLowerCase();
   const forcedAdmin = FORCED_ADMIN_IDS.has(String(userId || '').toLowerCase());
+  const persistedLocal = getPersistedBalanceForUser(userId);
+  const localSeed = String(currentUser?.id || '') === String(userId)
+    ? Number(currentUser?.balance || 0)
+    : (persistedLocal !== null ? persistedLocal : Number(b?.amount || 0));
   const next = {
     id: userId,
     username: usernameResolved,
@@ -6238,7 +6490,11 @@ async function loadCloudProfile(userId, { force = false } = {}) {
     avatar: p?.avatar_url || '',
     role: forcedAdmin ? 'admin' : roleResolved,
     status: statusResolved,
-    balance: Number(b?.amount || 0),
+    balance: resolveCloudBalanceMerge(
+      localSeed,
+      Number(b?.amount || 0),
+      userId
+    ),
     streak: Number(p?.daily_streak || 0),
     lastClaimDay: (p?.last_claim_day === null || p?.last_claim_day === undefined) ? null : Number(p.last_claim_day),
     lastClaimAt: p?.last_claim_at || null,
@@ -6246,13 +6502,16 @@ async function loadCloudProfile(userId, { force = false } = {}) {
     cloud: true
   };
   const snapBal = getBalanceSnapshot({ userId: String(userId || '') });
+  const persistedBal = getPersistedBalanceForUser(userId);
   if (
-    shouldRejectSuspectServerBalance(next.balance, currentUser?.balance, userId) ||
-    shouldRejectRollbackToGameAnchor(next.balance, currentUser?.balance)
+    shouldRejectSuspectServerBalance(next.balance, persistedBal ?? currentUser?.balance, userId) ||
+    shouldRejectRollbackToGameAnchor(next.balance, persistedBal ?? currentUser?.balance)
   ) {
     if (snapBal !== null && Number.isFinite(Number(snapBal))) {
       pushRuntimeLog('warn', `cloud_profile_balance_suspect_reset_100: server=${Number(next.balance || 0).toFixed(2)} snap=${Number(snapBal).toFixed(2)}`);
       next.balance = Number(snapBal);
+    } else if (persistedBal !== null) {
+      next.balance = Number(persistedBal);
     }
   }
   setCacheEntry('profile', cacheKey, next);
@@ -6363,13 +6622,13 @@ function startOnlinePresence() {
       onlineCount = Math.max(1, total);
       updateOnlineCountUI();
     });
-    onlineChannel.subscribe(async (status) => {
+    onlineChannel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        await onlineChannel.track({
+        onlineChannel.track({
           name: getDisplayName(),
           user: currentUser?.username || 'guest',
           at: Date.now()
-        });
+        }).catch(() => {});
       }
     });
     if (!onlineBoundUnload) {
@@ -6423,13 +6682,40 @@ function updateCurrentProfile({ displayName, avatar }) {
   }
   renderProfileBadge();
 }
+function attachProfileMenuToBody() {
+  const menu = document.getElementById('profile-menu');
+  if (!menu || menu.classList.contains('hidden') || menu.parentElement === document.body) return;
+  document.body.appendChild(menu);
+}
+
+function positionProfileMenu() {
+  const menu = document.getElementById('profile-menu');
+  const anchor = document.querySelector('#profile-wrap .profile-badge');
+  if (!menu || !anchor || menu.classList.contains('hidden')) return;
+  attachProfileMenuToBody();
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(360, Math.max(280, window.innerWidth - 16));
+  const maxH = Math.min(window.innerHeight * 0.85, window.innerHeight - rect.bottom - 16);
+  menu.style.top = `${Math.max(8, Math.round(rect.bottom + 8))}px`;
+  menu.style.right = `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`;
+  menu.style.left = 'auto';
+  menu.style.width = `${width}px`;
+  menu.style.maxHeight = `${Math.max(200, maxH)}px`;
+}
+
 function toggleProfileMenu(e) {
   if (e) e.stopPropagation();
   const menu = document.getElementById('profile-menu');
   if (!menu) return;
   const opening = menu.classList.contains('hidden');
   menu.classList.toggle('hidden');
-  if (opening) profileMenuJustOpenedAt = Date.now();
+  if (opening) {
+    profileMenuJustOpenedAt = Date.now();
+    requestAnimationFrame(() => {
+      positionProfileMenu();
+      requestAnimationFrame(positionProfileMenu);
+    });
+  }
   if (opening && isCloudUser() && currentUser?.id) {
     loadCloudProfile(currentUser.id, { force: true })
       .then((fresh) => {
@@ -6744,16 +7030,35 @@ async function claimDailyDrop() {
 }
 
 async function initAuth() {
-  currentUser = null;
   const diskSession = getSession();
+  currentUser = null;
   const c = getAuthClient();
   if (c) {
     try {
       const { data } = await c.auth.getSession();
       const uid = data?.session?.user?.id;
       if (uid) {
-        if (diskSession && diskSession.cloud && String(diskSession.id) === String(uid)) {
-          currentUser = { ...diskSession, balance: Number(diskSession.balance || 0) };
+        const persistedBal = getPersistedBalanceForUser(uid);
+        if (diskSession && String(diskSession.id) === String(uid)) {
+          currentUser = {
+            ...diskSession,
+            cloud: true,
+            isGuest: false,
+            balance: persistedBal !== null ? persistedBal : Number(diskSession.balance || 0)
+          };
+        } else if (persistedBal !== null) {
+          currentUser = {
+            id: uid,
+            cloud: true,
+            isGuest: false,
+            balance: persistedBal,
+            username: diskSession?.username || 'player',
+            displayName: diskSession?.displayName || 'Joueur',
+            avatar: diskSession?.avatar || '',
+            role: diskSession?.role || 'player',
+            status: diskSession?.status || 'active',
+            email: diskSession?.email || ''
+          };
         }
         const profile = await loadCloudProfile(uid, { force: true });
         if (profile) {
@@ -6765,10 +7070,23 @@ async function initAuth() {
       }
     } catch (_) {}
   }
+  if (!currentUser && diskSession?.cloud) {
+    const persistedBal = getPersistedBalanceForUser(diskSession.id);
+    currentUser = {
+      ...diskSession,
+      balance: persistedBal !== null ? persistedBal : Number(diskSession.balance || 0)
+    };
+    saveSession(currentUser);
+    authReady = true;
+  }
   if (!currentUser) {
     const session = diskSession || getSession();
     if (session && !session.cloud) {
-      currentUser = { ...session, balance: Number(session.balance || 0) };
+      const guestBal = getPersistedBalanceForUser('', { isGuest: true });
+      currentUser = {
+        ...session,
+        balance: guestBal !== null ? guestBal : Number(session.balance || 0)
+      };
       saveSession(currentUser);
       saveSessionMeta({ startedAt: Date.now(), mode: 'local' });
       ensureAdminBootstrap();
@@ -6789,7 +7107,10 @@ async function initAuth() {
         document.getElementById('no-hunt-selected').style.display = 'none';
         const ws = document.getElementById('hunt-workspace');
         if (ws) { ws.classList.remove('hidden'); ws.style.display = 'flex'; }
-        renderHuntWorkspace();
+        state._huntWsFp = '';
+        if (__activePage === 'hunt' && state.huntTab === 'workspace') {
+          scheduleHuntUI({ force: true });
+        }
       }
     } catch (e) { bhWarn('initAuth cloud reload failed', e); }
   }
@@ -7182,7 +7503,13 @@ function renderProfileBadge() {
     `;
     if (keepMenuOpen) {
       const menu = document.getElementById('profile-menu');
-      if (menu) menu.classList.remove('hidden');
+      if (menu) {
+        menu.classList.remove('hidden');
+        requestAnimationFrame(() => {
+          positionProfileMenu();
+          requestAnimationFrame(positionProfileMenu);
+        });
+      }
     }
     const prefs = getUiPrefs();
     const scaleEl = document.getElementById('profile-ui-scale');
@@ -7220,8 +7547,8 @@ let cloudGameSettlementInFlight = 0;
 let cloudQueuedGameSessions = 0;
 function getPendingStakePreviewTotal() {
   let total = 0;
-  for (const key of Object.keys(pendingStakePreviewByGame || {})) {
-    const q = pendingStakePreviewByGame[key];
+  for (const key of Object.keys(window.__hmStakePreview || {})) {
+    const q = window.__hmStakePreview[key];
     if (!Array.isArray(q) || !q.length) continue;
     for (const v of q) {
       const n = Number(v || 0);
@@ -7274,14 +7601,18 @@ async function syncCloudBalanceNow() {
     if (fresh && currentUser && currentUser.id === fresh.id) {
       const freshBal = Number(fresh.balance || 0);
       const currBal = Number(currentUser.balance || 0);
-      if (
-        shouldRejectSuspectServerBalance(freshBal, currBal, currentUser.id) ||
-        shouldRejectRollbackToGameAnchor(freshBal, currBal)
-      ) {
+      const persistedBal = getPersistedBalanceForUser(currentUser.id);
+      if (shouldRejectSuspectServerBalance(freshBal, persistedBal ?? currBal, currentUser.id)) {
         pushRuntimeLog('warn', `cloud_sync_skip_suspect_reset_100: fresh=${freshBal.toFixed(2)} current=${currBal.toFixed(2)}`);
         return;
       }
-      currentUser.balance = freshBal;
+      const mergedBal = resolveCloudBalanceMerge(currBal, freshBal, currentUser.id);
+      if (shouldRejectRollbackToGameAnchor(mergedBal, currBal) && Math.abs(mergedBal - currBal) > 0.005) {
+        pushRuntimeLog('warn', `cloud_sync_skip_anchor_rollback: merged=${mergedBal.toFixed(2)} current=${currBal.toFixed(2)}`);
+        return;
+      }
+      if (Math.abs(mergedBal - currBal) < 0.005) return;
+      currentUser.balance = mergedBal;
       saveSession(currentUser);
       updateLobbyBalance();
       renderProfileBadge();
@@ -7436,8 +7767,12 @@ async function recordGameSession(game, stake, payout) {
   setUserBalance(next);
 }
 let cloudSettlementQueue = Promise.resolve();
+let lastCloudValidationToastAt = 0;
 function showCloudValidationToastThrottled() {
-  /* volontairement silencieux : la file cloud gère les retries sans toast */
+  const now = Date.now();
+  if (now - lastCloudValidationToastAt < 4500) return;
+  lastCloudValidationToastAt = now;
+  showToast('Gain enregistré localement — synchro cloud en cours', 'info', 2800);
 }
 let lastCloudOfflineToastAt = 0;
 function showCloudOfflineToastThrottled() {
@@ -7477,7 +7812,13 @@ async function applyNetDeltaForGame(game, netAmount) {
   const payout = net > 0 ? net : 0;
   trackPlayerGameStats(String(game || 'unknown'), stake, payout);
   if (isCloudUser()) {
-    await queueCloudGameSession(game, stake, payout);
+    if (currentUser) {
+      currentUser.balance = Math.max(0, Number(currentUser.balance || 0) + net);
+      saveSession(currentUser);
+      updateLobbyBalance();
+      renderProfileBadge();
+    }
+    queueCloudGameSession(game, stake, payout).catch(() => {});
   } else {
     setUserBalance(getUserBalance() + net);
   }
@@ -7832,15 +8173,22 @@ async function initV101() {
   // Routing initial : on lit l'URL et on monte la bonne page.
   // Si l'URL pointe vers /admin et que l'utilisateur n'est pas admin,
   // switchPage() rebascule automatiquement sur /home.
-  const initial = (typeof pathToPage === 'function') ? pathToPage(location.pathname) : 'home';
-  switchPage(initial, { replace: true });
+  const initialRaw = (typeof pathToPage === 'function') ? pathToPage(location.pathname) : 'home';
+  let initial = initialRaw;
+  let initialHuntTab = null;
+  if (HUNT_TAB_FROM_PAGE[initialRaw]) {
+    initialHuntTab = HUNT_TAB_FROM_PAGE[initialRaw];
+    initial = 'hunt';
+  }
+  switchPage(initial, { replace: true, huntTab: initialHuntTab });
 
   // Back/forward navigateur : restaure la page sans re-pousser l'historique.
   if (!window.__bhPopStateBound) {
     window.__bhPopStateBound = true;
     window.addEventListener('popstate', (e) => {
       const page = (e.state && e.state.page) || pathToPage(location.pathname);
-      switchPage(page, { skipHistory: true });
+      const huntTab = (e.state && e.state.huntTab) || pathToHuntTab(location.pathname);
+      switchPage(page, { skipHistory: true, huntTab });
     });
   }
 }
@@ -7889,20 +8237,8 @@ async function refreshCatalogSilently(reason = 'interval') {
     }
     bhWarn(`[catalog] refresh ${reason}: ${before} → ${data.length} entrées, re-render`);
     state.slots = data.map((s) => normalizeCatalogEntry(s));
-    state.searchIndex = [];
-    state.slotMeta = [];
-    state.slotRefIndex = new Map();
-    const providerCounts = new Map();
-    for (let i = 0; i < state.slots.length; i++) {
-      const s = state.slots[i] || {};
-      const nom = (s.nom || s.name || s.title || s.Name || '').toLowerCase();
-      const provRaw = (s.provider || s.Provider || '');
-      const prov = String(provRaw).toLowerCase();
-      state.searchIndex.push({ nom, prov });
-      state.slotMeta.push({ gamdomEligible: true });
-      state.slotRefIndex.set(state.slots[i], i);
-      if (provRaw) providerCounts.set(provRaw, (providerCounts.get(provRaw) || 0) + 1);
-    }
+    buildSlotCatalogIndexes(state.slots);
+    state._huntWsFp = '';
     try { filterAndRender(); } catch (_) {}
   } catch (e) {
     bhWarn('[catalog] refresh failed', e?.message || e);
@@ -7930,11 +8266,25 @@ window.addEventListener('DOMContentLoaded', () => {
   registerAppServiceWorker();
   startCatalogAutoRefresh();
   initSidebarNavA11y();
+  initHuntHubTabs();
   initModalA11yObserver();
   updateCatalogModeHint();
-  initV101().then(() => {
-    if (pendingAuthOpen) showAuth();
-  });
+  if (!window.__hmPersistBalanceBound) {
+    window.__hmPersistBalanceBound = true;
+    const flushBalanceToDisk = () => {
+      if (currentUser) saveSession(currentUser);
+    };
+    window.addEventListener('pagehide', flushBalanceToDisk);
+    window.addEventListener('beforeunload', flushBalanceToDisk);
+  }
+  initV101()
+    .then(() => {
+      if (pendingAuthOpen) showAuth();
+    })
+    .catch((e) => {
+      bhWarn('initV101 failed', e);
+      pushRuntimeLog('error', `initV101: ${String(e?.message || e || 'unknown')}`);
+    });
   renderMaintenanceBanner();
   if (!navigator.onLine) showNetBanner('Mode hors ligne: certaines fonctions cloud indisponibles.', true);
   window.addEventListener('offline', () => {
@@ -7954,8 +8304,16 @@ window.addEventListener('DOMContentLoaded', () => {
     showNetBanner(`Erreur JS: ${String(e?.message || 'inconnue')}`, true);
   });
   window.addEventListener('unhandledrejection', (e) => {
-    pushRuntimeLog('error', `promise: ${String(e?.reason?.message || e?.reason || 'rejet non géré')}`);
-    showNetBanner('Erreur réseau/cloud détectée. Réessaie dans quelques secondes.', true);
+    const msg = String(e?.reason?.message || e?.reason || 'rejet non géré');
+    pushRuntimeLog('error', `promise: ${msg}`);
+    const low = msg.toLowerCase();
+    const looksNetwork = /network|fetch|offline|timeout|cloud|supabase|failed to fetch|aborterror|circuit|http\s*\d{3}/i.test(low);
+    if (looksNetwork) {
+      showNetBanner('Erreur réseau/cloud détectée. Réessaie dans quelques secondes.', true);
+    } else if (BH_DEBUG) {
+      showNetBanner(`Erreur interne: ${msg.slice(0, 120)}`, true);
+    }
+    if (typeof e.preventDefault === 'function') e.preventDefault();
   });
   document.addEventListener('click', (e) => {
     const el = e.target && e.target.closest ? e.target.closest('button, .sidebar-tab, .game-card, .hunt-item, .row-action-btn, .open-btn, .modal-btn, .sidebar-btn') : null;
@@ -7964,7 +8322,13 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (e) => {
     if (Date.now() - Number(profileMenuJustOpenedAt || 0) < 260) return;
     const wrap = document.getElementById('profile-wrap');
+    const menu = document.getElementById('profile-menu');
+    if (menu && !menu.classList.contains('hidden') && menu.contains(e.target)) return;
     if (wrap && !wrap.contains(e.target)) closeProfileMenu();
+  });
+  window.addEventListener('resize', () => {
+    const menu = document.getElementById('profile-menu');
+    if (menu && !menu.classList.contains('hidden')) positionProfileMenu();
   });
   document.addEventListener('error', (e) => {
     const el = e?.target;

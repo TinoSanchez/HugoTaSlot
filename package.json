@@ -10,7 +10,7 @@
     "build": "node scripts/build-original-site.mjs",
     "split:index": "node scripts/split-index-html.mjs",
     "preview": "vite preview web",
-    "deploy:vercel": "npm run build && vercel --prod --yes",
+    "deploy:vercel": "npm run build && vercel deploy --prod --yes --archive=tgz",
     "sync:stake": "node scripts/sync-stake-catalog.mjs",
     "sync:recent-slots": "node scripts/sync-recent-slots-to-jeux.mjs",
     "sync:jeux-full": "node scripts/sync-recent-slots-to-jeux.mjs && node scripts/sync-stake-catalog.mjs",
