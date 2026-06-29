@@ -96,6 +96,19 @@
             box-shadow: none;
         }
 
+        .spin-actions { display: flex; gap: 8px; margin-top: 10px; align-items: stretch; }
+        .spin-actions #btnSpin { flex: 1; margin-top: 0; }
+        .btn-small {
+            width: auto;
+            flex: 0 0 auto;
+            margin-top: 0;
+            padding: 0 14px;
+            font-size: 0.8em;
+            white-space: nowrap;
+            background: linear-gradient(135deg, #00ced1, #1e90ff);
+            color: #06222b;
+        }
+
         .wheel-container { position: relative; width: 340px; height: 340px; margin: 20px auto; }
         canvas { width: 100%; height: 100%; border-radius: 50%; border: 6px solid #ffd700; box-shadow: 0 0 25px rgba(255,215,0,0.4); }
         .pointer {
@@ -454,7 +467,10 @@ Joueur 8</textarea>
                 <div class="pointer"></div>
                 <canvas id="wheelCanvas" width="400" height="400"></canvas>
             </div>
-            <button id="btnSpin" type="button" onclick="spinWheel()" disabled>LANCER LA ROUE 🎡</button>
+            <div class="spin-actions">
+                <button id="btnSpin" type="button" onclick="spinWheel()" disabled>LANCER LA ROUE 🎡</button>
+                <button id="btnAll" type="button" class="btn-small" onclick="formAllTeams()" disabled title="Former toutes les équipes d'un coup">⚡ Tout former</button>
+            </div>
         </div>
 
         <div class="teams-box" style="width: 300px;">
@@ -587,7 +603,7 @@ Joueur 8</textarea>
             document.getElementById("teamsList").innerHTML = "";
             document.getElementById("bracketContainer").innerHTML = '<p style="color: #aaa; font-size: 0.9em; text-align: center; font-style: italic;">Le bracket s\'affichera une fois toutes les équipes formées.</p>';
             document.getElementById("drawStatus").innerText = "Prêt ! Lancez la roue.";
-            document.getElementById("btnSpin").disabled = false;
+            setDrawButtonsEnabled(true);
             updateCount();
             drawWheel();
         }
@@ -599,7 +615,7 @@ Joueur 8</textarea>
         function spinWheel() {
             if (isSpinning || players.length === 0) return;
             isSpinning = true;
-            document.getElementById("btnSpin").disabled = true;
+            setDrawButtonsEnabled(false);
 
             const winnerIndex = Math.floor(Math.random() * players.length);
             const spinStart = startAngle;
@@ -638,45 +654,23 @@ Joueur 8</textarea>
             if (currentTeam.length === 1) {
                 document.getElementById("drawStatus").innerText = `👤 Membre 1 : ${winner} !`;
                 if (players.length === 0) {
-                     const li = document.createElement("li");
-                     li.style.background = "rgba(255,255,255,0.1)";
-                     li.style.borderLeft = "5px solid #fff";
-                     li.innerHTML = `<span class="team-title" style="color:#aaa;">Solo / Bonus :</span> ${winner}`;
-                     document.getElementById("teamsList").appendChild(li);
-
-                     enregistrerEquipe('Solo', { border: '#fff', text: '#fff' }, [winner]);
-
+                     registerSolo(winner);
                      document.getElementById("drawStatus").innerText = "Fin du tirage !";
-                     document.getElementById("btnSpin").disabled = true;
+                     setDrawButtonsEnabled(false);
                      renderBracket();
                 } else {
-                    document.getElementById("btnSpin").disabled = false;
+                    setDrawButtonsEnabled(true);
                 }
             } else if (currentTeam.length === 2) {
-                document.getElementById("drawStatus").innerText = `🤝 Équipe : ${currentTeam[0]} & ${currentTeam[1]} !`;
-
-                const li = document.createElement("li");
-                const teamNum = document.getElementById("teamsList").children.length + 1;
-
-                const styleIndex = (teamNum - 1) % teamStyles.length;
-                const style = teamStyles[styleIndex];
-
-                li.style.backgroundColor = style.bg;
-                li.style.borderLeft = `5px solid ${style.border}`;
-                li.style.color = style.text;
-
-                const teamName = `${currentTeam[0]} & ${currentTeam[1]}`;
-                li.innerHTML = `<span class="team-title" style="color: #fff;">Équipe ${teamNum} :</span> ${teamName}`;
-                document.getElementById("teamsList").appendChild(li);
-
-                enregistrerEquipe(`Équipe ${teamNum}`, style, [currentTeam[0], currentTeam[1]]);
-
+                const duo = registerDuo(currentTeam[0], currentTeam[1]);
+                document.getElementById("drawStatus").innerText = `🤝 Équipe : ${duo} !`;
                 currentTeam = [];
 
                 if (players.length >= 1) {
-                    document.getElementById("btnSpin").disabled = false;
+                    setDrawButtonsEnabled(true);
                 } else {
                     document.getElementById("drawStatus").innerText = "🎉 Toutes les équipes sont prêtes !";
+                    setDrawButtonsEnabled(false);
                     renderBracket();
                 }
             }
@@ -684,6 +678,61 @@ Joueur 8</textarea>
             updateCount();
             startAngle = wheelNorm(startAngle);
             drawWheel();
+        }
+
+        function setDrawButtonsEnabled(enabled) {
+            const spin = document.getElementById("btnSpin");
+            const all = document.getElementById("btnAll");
+            if (spin) spin.disabled = !enabled;
+            if (all) all.disabled = !enabled;
+        }
+
+        function registerDuo(p1, p2) {
+            const li = document.createElement("li");
+            const teamNum = document.getElementById("teamsList").children.length + 1;
+            const style = teamStyles[(teamNum - 1) % teamStyles.length];
+            li.style.backgroundColor = style.bg;
+            li.style.borderLeft = `5px solid ${style.border}`;
+            li.style.color = style.text;
+            const teamName = `${p1} & ${p2}`;
+            li.innerHTML = `<span class="team-title" style="color: #fff;">Équipe ${teamNum} :</span> ${teamName}`;
+            document.getElementById("teamsList").appendChild(li);
+            enregistrerEquipe(`Équipe ${teamNum}`, style, [p1, p2]);
+            return teamName;
+        }
+
+        function registerSolo(name) {
+            const li = document.createElement("li");
+            li.style.background = "rgba(255,255,255,0.1)";
+            li.style.borderLeft = "5px solid #fff";
+            li.innerHTML = `<span class="team-title" style="color:#aaa;">Solo / Bonus :</span> ${name}`;
+            document.getElementById("teamsList").appendChild(li);
+            enregistrerEquipe('Solo', { border: '#fff', text: '#fff' }, [name]);
+        }
+
+        function formAllTeams() {
+            if (isSpinning || players.length === 0) return;
+            setDrawButtonsEnabled(false);
+
+            while (players.length > 0) {
+                const idx = Math.floor(Math.random() * players.length);
+                const winner = players.splice(idx, 1)[0];
+                currentTeam.push(winner);
+                if (currentTeam.length === 2) {
+                    registerDuo(currentTeam[0], currentTeam[1]);
+                    currentTeam = [];
+                }
+            }
+            if (currentTeam.length === 1) {
+                registerSolo(currentTeam[0]);
+                currentTeam = [];
+            }
+
+            updateCount();
+            startAngle = wheelNorm(startAngle);
+            drawWheel();
+            document.getElementById("drawStatus").innerText = "🎉 Toutes les équipes sont prêtes !";
+            renderBracket();
         }
 
         function enregistrerEquipe(name, style, members) {
