@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HugoTaSlot × 19EnPlein — Trailer</title>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<style>
+  :root {
+    --green: #00ff8c;
+    --green2: #00dc6e;
+    --gold: #ffd76a;
+    --gold2: #c97d00;
+    --ink: #06100b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'Arial Black', Arial, sans-serif;
+    color: #fff;
+  }
+  /* Scène 16:9 centrée, letterbox noir — idéal capture vidéo */
+  #stage {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(100vw, 177.78vh);
+    height: min(56.25vw, 100vh);
+    background:
+      radial-gradient(circle at 50% 38%, #123, #0a0f14 60%, #04070a 100%);
+    overflow: hidden;
+  }
+  #stage::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,140,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,140,0.05) 1px, transparent 1px);
+    background-size: 5% 8.8%;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+  .vignette { position: absolute; inset: 0; box-shadow: inset 0 0 18vmin rgba(0,0,0,0.85); pointer-events: none; z-index: 50; }
+
+  .scene {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2.2vmin;
+    opacity: 0;
+    transition: opacity .55s ease;
+    text-align: center;
+    padding: 6vmin;
+  }
+  .scene.active { opacity: 1; }
+
+  .kicker {
+    letter-spacing: .8vmin; text-transform: uppercase;
+    font-size: 2.1vmin; font-weight: 800;
+    color: var(--gold);
+    text-shadow: 0 0 2vmin rgba(255,215,106,.5);
+  }
+  .title {
+    font-size: 8.5vmin; font-weight: 900; line-height: 1.02;
+    text-transform: uppercase; letter-spacing: .2vmin;
+    text-shadow: 0 0 4vmin rgba(0,255,140,.35);
+  }
+  .title .g { color: var(--green); }
+  .title .o { color: var(--gold); }
+  .sub { font-size: 2.6vmin; color: #aeb9c5; font-weight: 600; letter-spacing: .3vmin; }
+
+  /* anim d'entrée par défaut des éléments d'une scène active */
+  .scene.active .pop { animation: pop .7s cubic-bezier(.2,.9,.25,1.2) both; }
+  .scene.active .pop.d1 { animation-delay: .12s; }
+  .scene.active .pop.d2 { animation-delay: .26s; }
+  .scene.active .pop.d3 { animation-delay: .42s; }
+  .scene.active .pop.d4 { animation-delay: .58s; }
+  @keyframes pop { from { opacity: 0; transform: translateY(3vmin) scale(.92); } to { opacity: 1; transform: none; } }
+
+  /* ---- Scène intro logos ---- */
+  .logos { display: flex; align-items: center; gap: 3vmin; }
+  .logos img { height: 18vmin; width: auto; border-radius: 3vmin; box-shadow: 0 1vmin 4vmin rgba(0,0,0,.6); }
+  .logos .x { font-size: 7vmin; font-weight: 900; color: #fff; opacity: .85; }
+  .glow-ring {
+    position: absolute; width: 60vmin; height: 60vmin; border-radius: 50%;
+    border: .4vmin solid rgba(0,255,140,.25);
+    box-shadow: 0 0 8vmin rgba(0,255,140,.25), inset 0 0 8vmin rgba(0,255,140,.15);
+    animation: spinRing 12s linear infinite;
+  }
+  @keyframes spinRing { to { transform: rotate(360deg); } }
+
+  /* ---- Rouleaux slot ---- */
+  .reels { display: flex; gap: 2vmin; }
+  .reel {
+    width: 16vmin; height: 20vmin; overflow: hidden;
+    background: linear-gradient(#0c1620, #060c12);
+    border: .5vmin solid var(--gold); border-radius: 2vmin;
+    box-shadow: 0 0 3vmin rgba(255,215,106,.3), inset 0 0 3vmin rgba(0,0,0,.8);
+    position: relative;
+  }
+  .reel .strip { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; }
+  .reel .sym { height: 20vmin; display: flex; align-items: center; justify-content: center; font-size: 12vmin; }
+  .scene.active .reel .strip { animation: roll 1.6s cubic-bezier(.15,.8,.2,1) forwards; }
+  .scene.active .reel:nth-child(2) .strip { animation-duration: 2.0s; }
+  .scene.active .reel:nth-child(3) .strip { animation-duration: 2.5s; }
+  @keyframes roll { from { transform: translateY(-80vmin); } to { transform: translateY(0); } }
+
+  /* ---- Bonus hunt stats ---- */
+  .stats { display: flex; gap: 2.4vmin; }
+  .stat {
+    background: rgba(10,20,28,.85); border: 1px solid #20303f;
+    border-radius: 2vmin; padding: 3vmin 4vmin; min-width: 26vmin;
+    box-shadow: 0 1vmin 3vmin rgba(0,0,0,.5);
+  }
+  .stat .lbl { font-size: 1.9vmin; color: #8aa; text-transform: uppercase; letter-spacing: .4vmin; }
+  .stat .val { font-size: 6vmin; font-weight: 900; margin-top: .6vmin; }
+  .stat .val.green { color: var(--green); }
+  .stat .val.gold { color: var(--gold); }
+
+  /* ---- Catalogue ---- */
+  .bigcount { font-size: 18vmin; font-weight: 900; color: var(--green); text-shadow: 0 0 6vmin rgba(0,255,140,.5); line-height: 1; }
+  .grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 1vmin; width: 80vmin; max-width: 90%; }
+  .grid .cell { aspect-ratio: 3/4; border-radius: 1vmin; opacity: .9; }
+  .scene.active .grid .cell { animation: cellIn .5s both; }
+
+  @keyframes cellIn { from { opacity: 0; transform: scale(.6); } to { opacity: .9; transform: none; } }
+
+  /* ---- Mini-jeux icônes ---- */
+  .icons { display: flex; gap: 2.4vmin; flex-wrap: wrap; justify-content: center; }
+  .ico {
+    width: 16vmin; height: 16vmin; border-radius: 2.4vmin;
+    display: flex; align-items: center; justify-content: center; font-size: 8vmin;
+    background: rgba(10,20,28,.85); border: 1px solid #20303f;
+    box-shadow: 0 1vmin 3vmin rgba(0,0,0,.5);
+  }
+  .scene.active .ico { animation: pop .6s cubic-bezier(.2,.9,.25,1.2) both; }
+  .scene.active .ico:nth-child(2){animation-delay:.08s}
+  .scene.active .ico:nth-child(3){animation-delay:.16s}
+  .scene.active .ico:nth-child(4){animation-delay:.24s}
+  .scene.active .ico:nth-child(5){animation-delay:.32s}
+  .scene.active .ico:nth-child(6){animation-delay:.40s}
+
+  /* ---- Roue ---- */
+  .wheel { width: 36vmin; height: 36vmin; position: relative; }
+  .wheel svg { width: 100%; height: 100%; filter: drop-shadow(0 0 3vmin rgba(255,215,106,.4)); }
+  .scene.active .wheel svg { animation: spinW 3.2s cubic-bezier(.12,.7,.1,1) forwards; transform-origin: 50% 50%; }
+  @keyframes spinW { to { transform: rotate(1440deg); } }
+  .wheel .needle {
+    position: absolute; top: -2vmin; left: 50%; transform: translateX(-50%);
+    border-left: 2vmin solid transparent; border-right: 2vmin solid transparent;
+    border-top: 3.5vmin solid #ff3b3b; z-index: 5;
+  }
+
+  /* ---- Partenaire ---- */
+  .partner-logo { height: 12vmin; width: auto; filter: drop-shadow(0 0 3vmin rgba(255,255,255,.25)); }
+
+  /* ---- CTA ---- */
+  .cta-title { font-size: 11vmin; }
+  .url-pill {
+    margin-top: 2vmin; font-size: 4.4vmin; font-weight: 900; letter-spacing: .3vmin;
+    padding: 1.6vmin 4.5vmin; border-radius: 99vmin;
+    background: linear-gradient(135deg, var(--green), var(--green2));
+    color: #04130b; box-shadow: 0 0 5vmin rgba(0,255,140,.5);
+  }
+  .cta-logos { display: flex; align-items: center; gap: 2vmin; margin-top: 3vmin; opacity: .92; }
+  .cta-logos img { height: 8vmin; border-radius: 1.5vmin; }
+  .cta-logos .x { font-size: 4vmin; font-weight: 900; }
+
+  /* progress bar */
+  #progress { position: absolute; bottom: 0; left: 0; height: .5vmin; background: linear-gradient(90deg, var(--green), var(--gold)); width: 0; z-index: 60; }
+
+  /* contrôles (hors capture si tu cadres sur la scène) */
+  #controls {
+    position: fixed; top: 14px; right: 14px; z-index: 100;
+    display: flex; gap: 8px;
+  }
+  #controls button {
+    background: rgba(0,0,0,.6); color: #fff; border: 1px solid #2a3a48;
+    border-radius: 10px; padding: 8px 14px; font-weight: 800; cursor: pointer;
+    font-size: 13px; backdrop-filter: blur(4px);
+  }
+  #controls button:hover { border-color: var(--green); color: var(--green); }
+  .hint {
+    position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 100; color: #6b7d8c; font-size: 12px; text-align: center;
+    background: rgba(0,0,0,.4); padding: 6px 12px; border-radius: 8px;
+  }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <!-- 1. INTRO -->
+  <section class="scene" data-dur="3600">
+    <div class="glow-ring"></div>
+    <div class="logos">
+      <img class="pop" src="./assets/logo-hugotaslot.jpg" alt="HugoTaSlot" onerror="this.style.display='none'">
+      <span class="x pop d1">×</span>
+      <img class="pop d2" src="./assets/19enplein-logo.png" alt="19EnPlein" onerror="this.style.display='none'">
+    </div>
+    <div class="title pop d2"><span class="g">HUGOTASLOT</span> × <span class="o">19ENPLEIN</span></div>
+    <div class="sub pop d3">BONUS HUNT TOOL · TEAM CASINO</div>
+  </section>
+
+  <!-- 2. SLOGAN + REELS -->
+  <section class="scene" data-dur="3600">
+    <div class="kicker pop">La plateforme des passionnés</div>
+    <div class="title pop d1">LE CASINO,<br><span class="g">EN ÉQUIPE.</span></div>
+    <div class="reels">
+      <div class="reel"><div class="strip">
+        <div class="sym">🍒</div><div class="sym">💎</div><div class="sym">🔔</div><div class="sym">7️⃣</div><div class="sym">🎰</div>
+      </div></div>
+      <div class="reel"><div class="strip">
+        <div class="sym">🔥</div><div class="sym">7️⃣</div><div class="sym">🍋</div><div class="sym">⭐</div><div class="sym">💎</div>
+      </div></div>
+      <div class="reel"><div class="strip">
+        <div class="sym">⭐</div><div class="sym">🍇</div><div class="sym">💰</div><div class="sym">7️⃣</div><div class="sym">🔥</div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 3. BONUS HUNT -->
+  <section class="scene" data-dur="4200">
+    <div class="kicker pop">Outil n°1</div>
+    <div class="title pop d1"><span class="g">BONUS HUNT</span> TRACKER</div>
+    <div class="stats">
+      <div class="stat pop d2"><div class="lbl">Mise totale</div><div class="val gold" data-count="2000" data-suffix=" €">0 €</div></div>
+      <div class="stat pop d3"><div class="lbl">Gains</div><div class="val green" data-count="5480" data-suffix=" €">0 €</div></div>
+      <div class="stat pop d4"><div class="lbl">Multi</div><div class="val gold" data-count="2.74" data-decimals="2" data-prefix="x">x0</div></div>
+    </div>
+    <div class="sub pop d4">Suis tes hunts en temps réel, synchro cloud</div>
+  </section>
+
+  <!-- 4. CATALOGUE -->
+  <section class="scene" data-dur="3600">
+    <div class="kicker pop">Base de données</div>
+    <div class="bigcount pop d1" data-count="7800" data-suffix="+">0</div>
+    <div class="title pop d1" style="font-size:5vmin;">SLOTS RÉFÉRENCÉES</div>
+    <div class="grid" id="catGrid"></div>
+  </section>
+
+  <!-- 5. MINI-JEUX -->
+  <section class="scene" data-dur="3600">
+    <div class="kicker pop">Entre deux hunts</div>
+    <div class="title pop d1">MINI-JEUX <span class="o">&amp;</span> ROUES</div>
+    <div class="icons">
+      <div class="ico">🂡</div>
+      <div class="ico">🎲</div>
+      <div class="ico">💣</div>
+      <div class="ico">🚀</div>
+      <div class="ico">🎯</div>
+      <div class="ico">🎡</div>
+    </div>
+    <div class="sub pop d4">Blackjack · Roulette · Mines · Crash · Roue tournoi…</div>
+  </section>
+
+  <!-- 6. ROUE / TIRAGES -->
+  <section class="scene" data-dur="3800">
+    <div class="kicker pop">Anime ta communauté</div>
+    <div class="title pop d1">ROUES &amp; <span class="g">TIRAGES</span></div>
+    <div class="wheel pop d2">
+      <div class="needle"></div>
+      <svg viewBox="0 0 100 100" id="wheelSvg"></svg>
+    </div>
+    <div class="sub pop d3">Multi-tirages · Tournoi en équipes · Bracket auto</div>
+  </section>
+
+  <!-- 7. PARTENAIRE -->
+  <section class="scene" data-dur="3200">
+    <div class="kicker pop">Partenaire officiel</div>
+    <img class="partner-logo pop d1" src="./assets/gamdom-logo-white-transparent.png" alt="Gamdom" onerror="this.style.display='none'">
+    <div class="sub pop d2">Joue sur Gamdom avec la team</div>
+  </section>
+
+  <!-- 8. CTA -->
+  <section class="scene" data-dur="4600">
+    <div class="kicker pop">Rejoins l'aventure</div>
+    <div class="title cta-title pop d1">REJOINS <span class="g">LE TEAM</span></div>
+    <div class="url-pill pop d2">hugotaslot.fr</div>
+    <div class="cta-logos pop d3">
+      <img src="./assets/logo-hugotaslot.jpg" alt="" onerror="this.style.display='none'">
+      <span class="x">×</span>
+      <img src="./assets/19enplein-logo.png" alt="" onerror="this.style.display='none'">
+    </div>
+  </section>
+
+  <div class="vignette"></div>
+  <div id="progress"></div>
+</div>
+
+<div id="controls">
+  <button id="btnReplay" type="button">↻ Rejouer</button>
+  <button id="btnFs" type="button">⛶ Plein écran</button>
+  <button id="btnHide" type="button">🙈 Masquer UI</button>
+</div>
+<div class="hint" id="hint">Astuce : « Plein écran » + « Masquer UI », puis enregistre l'écran (OBS / Win+G) pour obtenir la vidéo.</div>
+
+<script>
+const scenes = Array.from(document.querySelectorAll('.scene'));
+const progress = document.getElementById('progress');
+let timers = [];
+let totalDur = scenes.reduce((s, el) => s + (parseInt(el.dataset.dur, 10) || 3000), 0);
+
+function clearTimers() { timers.forEach(t => clearTimeout(t)); timers = []; }
+
+function animateCounters(scene) {
+  scene.querySelectorAll('[data-count]').forEach(el => {
+    const target = parseFloat(el.dataset.count);
+    const dec = parseInt(el.dataset.decimals || '0', 10);
+    const suffix = el.dataset.suffix || '';
+    const prefix = el.dataset.prefix || '';
+    const dur = 1300;
+    const t0 = performance.now();
+    function tick(now) {
+      const p = Math.min(1, (now - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const v = target * eased;
+      const shown = dec ? v.toFixed(dec) : Math.round(v).toLocaleString('fr-FR');
+      el.textContent = prefix + shown + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+function playFrom(i) {
+  clearTimers();
+  scenes.forEach(s => s.classList.remove('active'));
+  if (i >= scenes.length) { finish(); return; }
+  const scene = scenes[i];
+  // reflow pour relancer les animations CSS
+  void scene.offsetWidth;
+  scene.classList.add('active');
+  animateCounters(scene);
+  const dur = parseInt(scene.dataset.dur, 10) || 3000;
+  timers.push(setTimeout(() => playFrom(i + 1), dur));
+}
+
+function finish() {
+  if (typeof confetti === 'function') {
+    confetti({ particleCount: 220, spread: 110, origin: { y: 0.6 }, colors: ['#00ff8c', '#ffd76a', '#ffffff'] });
+  }
+  scenes[scenes.length - 1].classList.add('active');
+}
+
+function runProgress() {
+  progress.style.transition = 'none';
+  progress.style.width = '0%';
+  void progress.offsetWidth;
+  progress.style.transition = `width ${totalDur}ms linear`;
+  progress.style.width = '100%';
+}
+
+function start() {
+  runProgress();
+  playFrom(0);
+}
+
+// Roue SVG (segments)
+(function buildWheel() {
+  const svg = document.getElementById('wheelSvg');
+  if (!svg) return;
+  const cols = ['#d63031', '#10ac84', '#2e3a4e', '#5758bb', '#cf6a87', '#00d2d3', '#ff9f43', '#ffd76a'];
+  const n = 8, cx = 50, cy = 50, r = 48;
+  let html = '';
+  for (let k = 0; k < n; k++) {
+    const a0 = (k / n) * Math.PI * 2 - Math.PI / 2;
+    const a1 = ((k + 1) / n) * Math.PI * 2 - Math.PI / 2;
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    html += `<path d="M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 0 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z" fill="${cols[k]}" stroke="rgba(255,215,106,.5)" stroke-width="0.6"/>`;
+  }
+  html += `<circle cx="${cx}" cy="${cy}" r="8" fill="#0b1410" stroke="#00ff8c" stroke-width="1.5"/>`;
+  svg.innerHTML = html;
+})();
+
+// Grille catalogue (tuiles colorées)
+(function buildGrid() {
+  const grid = document.getElementById('catGrid');
+  if (!grid) return;
+  const cols = ['#d63031', '#10ac84', '#5758bb', '#ff9f43', '#00d2d3', '#cf6a87', '#2e3a4e', '#ffd76a'];
+  for (let k = 0; k < 24; k++) {
+    const c = document.createElement('div');
+    c.className = 'cell';
+    const a = cols[k % cols.length], b = cols[(k * 3 + 2) % cols.length];
+    c.style.background = `linear-gradient(135deg, ${a}, ${b})`;
+    c.style.animationDelay = (k * 0.03) + 's';
+    grid.appendChild(c);
+  }
+})();
+
+// Contrôles
+document.getElementById('btnReplay').addEventListener('click', start);
+document.getElementById('btnFs').addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+  else document.exitFullscreen?.();
+});
+document.getElementById('btnHide').addEventListener('click', () => {
+  document.getElementById('controls').classList.add('hide');
+  document.getElementById('hint').classList.add('hide');
+  // ré-affichage par touche "h"
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() === 'h') {
+    document.getElementById('controls').classList.toggle('hide');
+    document.getElementById('hint').classList.toggle('hide');
+  }
+  if (e.key === ' ') { e.preventDefault(); start(); }
+});
+
+window.addEventListener('load', () => setTimeout(start, 400));
+</script>
+</body>
+</html>

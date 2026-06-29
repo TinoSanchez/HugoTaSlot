@@ -17,6 +17,7 @@ mkdirSync(outDir, { recursive: true });
 // index.html + styles.css + app.js : site principal (voir scripts/split-index-html.mjs)
 const copyTargets = [
   "index.html",
+  "trailer.html",
   "roue-multi-tirages.html",
   "roue-tournoi-equipes.html",
   "mini-opener.html",
