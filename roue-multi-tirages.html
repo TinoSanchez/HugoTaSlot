@@ -81,6 +81,35 @@ select {
   cursor: pointer;
 }
 
+.config-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.config-field {
+  flex: 1;
+  max-width: 200px;
+}
+.config-field label { margin-bottom: 6px; }
+input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  background: #161d24;
+  color: #fff;
+  border: 2px solid #8a6d3b;
+  border-radius: 8px;
+  font-size: 16px;
+  box-sizing: border-box;
+  text-align: center;
+  font-weight: bold;
+}
+input[type="number"]:focus {
+  outline: none;
+  border-color: #00ffbc;
+  box-shadow: 0 0 10px rgba(0, 255, 188, 0.3);
+}
+
 textarea {
   width: 90%;
   height: 100px;
@@ -240,13 +269,16 @@ button:disabled {
 <div class="grey-container">
   <img src="./assets/gamdom-logo-white.png" alt="Gamdom Logo" class="brand-logo" onerror="this.style.display='none'">
 
-  <label for="modeSelect">Type de Tirage au sort :</label>
-  <select id="modeSelect" onchange="resetTirage()">
-    <option value="classic">Tirage Classique (Montant unique 5$)</option>
-    <option value="2x25">2 Vainqueurs à 25$</option>
-    <option value="3x25">3 Vainqueurs à 25$</option>
-    <option value="3_special">3 Vainqueurs Spécial (50$ / 25$ / 15$)</option>
-  </select>
+  <div class="config-row">
+    <div class="config-field">
+      <label for="winnerCount">Nombre de gagnants</label>
+      <input id="winnerCount" type="number" min="1" step="1" value="1" onchange="resetTirage()">
+    </div>
+    <div class="config-field">
+      <label for="gainPerWinner">Gain par gagnant ($)</label>
+      <input id="gainPerWinner" type="number" min="0" step="1" value="25" onchange="resetTirage()">
+    </div>
+  </div>
 
   <p>Entrez un prénom par ligne :</p>
   <textarea id="names"></textarea>
@@ -322,7 +354,6 @@ function wheelFinalAngle(fromAngle, index, count, minExtraTurns, maxExtraTurns) 
   return fromAngle + extra * Math.PI * 2 + delta;
 }
 
-const donationAmounts = ["5$"];
 const colors = ["#d63031", "#10ac84", "#2e3a4e", "#5758bb", "#1e272e", "#cf6a87", "#00d2d3", "#ff9f43"];
 
 window.onload = function() {
@@ -335,11 +366,30 @@ window.onload = function() {
   createWheel();
 };
 
+function setConfigDisabled(disabled) {
+  ["btnCreate", "winnerCount", "gainPerWinner"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
+}
+
+function formatGainLabel(value) {
+  const n = parseFloat(value);
+  return `${Number.isFinite(n) ? n : 0}$`;
+}
+
 function resetTirage() {
   currentRewardIndex = 0;
   multiDrawMode = false;
+  currentRewardsList = [];
   document.getElementById("current-winner").innerHTML = "";
   document.getElementById("history-winners").innerHTML = "";
+  const btn = document.getElementById("btnSpin");
+  if (btn) {
+    btn.innerHTML = "🔥 TOURNER LA ROUE";
+    btn.disabled = false;
+  }
+  setConfigDisabled(false);
 }
 
 function createWheel() {
@@ -407,22 +457,13 @@ function spinWheel() {
   if (currentRewardIndex === 0) {
     const txtValue = document.getElementById("names").value;
     participants = txtValue.split("\n").map(n => n.trim()).filter(n => n !== "");
-    const mode = document.getElementById("modeSelect").value;
     document.getElementById("history-winners").innerHTML = "";
 
-    if (mode === "2x25") {
-      currentRewardsList = ["25$", "25$"];
-      multiDrawMode = true;
-    } else if (mode === "3x25") {
-      currentRewardsList = ["25$", "25$", "25$"];
-      multiDrawMode = true;
-    } else if (mode === "3_special") {
-      currentRewardsList = ["50$", "25$", "15$"];
-      multiDrawMode = true;
-    } else {
-      currentRewardsList = [];
-      multiDrawMode = false;
-    }
+    let count = Math.max(1, parseInt(document.getElementById("winnerCount").value, 10) || 1);
+    count = Math.min(count, participants.length);
+    const gainLabel = formatGainLabel(document.getElementById("gainPerWinner").value);
+    currentRewardsList = Array.from({ length: count }, () => gainLabel);
+    multiDrawMode = true;
   }
 
   if (participants.length === 0) {
@@ -433,8 +474,7 @@ function spinWheel() {
 
   isSpinning = true;
   document.getElementById("btnSpin").disabled = true;
-  document.getElementById("btnCreate").disabled = true;
-  document.getElementById("modeSelect").disabled = true;
+  setConfigDisabled(true);
   document.getElementById("current-winner").innerHTML = "Sélection en cours...";
 
   const winnerIndex = Math.floor(Math.random() * participants.length);
@@ -469,50 +509,29 @@ function processWinner(winnerIndex) {
   const idx = Number.isFinite(winnerIndex) ? winnerIndex : verified;
   const winner = participants[idx];
 
-  let reward = "";
+  const reward = currentRewardsList[currentRewardIndex] || formatGainLabel(document.getElementById("gainPerWinner").value);
+  currentRewardIndex++;
 
-  if (multiDrawMode) {
-    reward = currentRewardsList[currentRewardIndex];
-    currentRewardIndex++;
+  const total = currentRewardsList.length;
+  document.getElementById("current-winner").innerHTML = `🏆 Vainqueur ${currentRewardIndex}/${total} : ${winner} !`;
 
-    document.getElementById("current-winner").innerHTML = `🏆 Tirage ${currentRewardIndex} : ${winner} !`;
+  const historyItem = document.createElement("div");
+  historyItem.className = "result-line";
+  historyItem.innerHTML = `Vainqueur n°${currentRewardIndex} : <span style="color:#10ac84">${winner}</span> ➡️ <span class="reward-amount">${reward}</span>`;
+  document.getElementById("history-winners").appendChild(historyItem);
 
-    const historyItem = document.createElement("div");
-    historyItem.className = "result-line";
-    historyItem.innerHTML = `Vainqueur n°${currentRewardIndex} : <span style="color:#10ac84">${winner}</span> ➡️ <span class="reward-amount">${reward}</span>`;
-    document.getElementById("history-winners").appendChild(historyItem);
+  participants.splice(idx, 1);
+  document.getElementById("names").value = participants.join("\n");
 
-    participants.splice(idx, 1);
-    document.getElementById("names").value = participants.join("\n");
-
-    if (currentRewardIndex < currentRewardsList.length) {
-      document.getElementById("btnSpin").disabled = false;
-      document.getElementById("btnSpin").innerHTML = `🔥 TIRER LE VAINQUEUR SUIVANT (${currentRewardsList[currentRewardIndex]})`;
-    } else {
-      document.getElementById("current-winner").innerHTML = "🎉 Fin de la session de tirage !";
-      document.getElementById("btnSpin").disabled = false;
-      document.getElementById("btnSpin").innerHTML = "🔥 RECOMMENCER UNE SESSION";
-      document.getElementById("btnCreate").disabled = false;
-      document.getElementById("modeSelect").disabled = false;
-      currentRewardIndex = 0;
-    }
-
-  } else {
-    reward = donationAmounts[0];
-    document.getElementById("current-winner").innerHTML = `🏆 ${winner} EN PLEIN !`;
-
-    const historyItem = document.createElement("div");
-    historyItem.className = "result-line";
-    historyItem.innerHTML = `💰 DON COULEUR : <span class="reward-amount">${reward}</span>`;
-    document.getElementById("history-winners").innerHTML = "";
-    document.getElementById("history-winners").appendChild(historyItem);
-
-    participants.splice(idx, 1);
-    document.getElementById("names").value = participants.join("\n");
-
+  if (currentRewardIndex < currentRewardsList.length && participants.length > 0) {
     document.getElementById("btnSpin").disabled = false;
-    document.getElementById("btnCreate").disabled = false;
-    document.getElementById("modeSelect").disabled = false;
+    document.getElementById("btnSpin").innerHTML = `🔥 TIRER LE VAINQUEUR SUIVANT (${currentRewardsList[currentRewardIndex]})`;
+  } else {
+    document.getElementById("current-winner").innerHTML = "🎉 Fin de la session de tirage !";
+    document.getElementById("btnSpin").disabled = false;
+    document.getElementById("btnSpin").innerHTML = "🔥 RECOMMENCER UNE SESSION";
+    setConfigDisabled(false);
+    currentRewardIndex = 0;
   }
 
   if (typeof confetti === "function") {
