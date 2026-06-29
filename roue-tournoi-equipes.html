@@ -170,18 +170,22 @@
         .score-controls {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
+            flex: 0 0 auto;
         }
         .score-btn {
             background: #3a3a4f;
             border: 1px solid #55557c;
             color: #fff;
-            width: 28px;
-            height: 28px;
+            width: 26px;
+            height: 26px;
+            min-width: 26px;
             border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
             font-size: 1em;
+            padding: 0;
+            flex: 0 0 auto;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -277,6 +281,8 @@
             padding: 8px;
             position: relative;
             z-index: 1;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         .match-vs {
             text-align: center;
@@ -292,6 +298,9 @@
             border: 1px solid #3a3a4f;
             background: #252533;
             transition: 0.2s;
+            box-sizing: border-box;
+            min-width: 0;
+            overflow: hidden;
         }
         .match-team + .match-team { margin-top: 6px; }
         .match-team.is-winner {
@@ -346,8 +355,10 @@
             align-items: center;
             justify-content: space-between;
             gap: 6px;
+            flex-wrap: nowrap;
+            min-width: 0;
         }
-        .ctrl-label { font-size: 0.72em; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+        .ctrl-label { font-size: 0.72em; color: #888; text-transform: uppercase; letter-spacing: 0.5px; flex: 0 0 auto; }
         .slot-input {
             width: 100%;
             background: #111116;
@@ -361,16 +372,23 @@
         .slot-input::placeholder { color: #666; }
         .slot-input:focus { outline: none; border-color: #ffd700; }
         .gain-input {
-            width: 60px;
+            width: 46px;
+            min-width: 0;
             background: #111116;
             border: 1px solid #44445c;
             color: #00ff80;
-            padding: 4px;
+            padding: 4px 2px;
             border-radius: 6px;
             text-align: center;
             font-weight: bold;
             font-size: 0.9em;
+            box-sizing: border-box;
+            flex: 0 0 auto;
+            -moz-appearance: textfield;
+            appearance: textfield;
         }
+        .gain-input::-webkit-outer-spin-button,
+        .gain-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .gain-input:focus { outline: none; border-color: #00ff80; }
         .champion-col {
             display: flex;
