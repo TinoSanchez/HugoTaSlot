@@ -314,20 +314,39 @@
         .bye-tag { color: #ffd700; font-size: 0.72em; font-weight: 800; text-transform: uppercase; }
         .member-row {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 6px;
-            margin-bottom: 5px;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #2d2d3d;
         }
-        .member-row:last-child { margin-bottom: 0; }
+        .member-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
         .member-name {
             font-size: 0.85em;
             color: #ddd;
-            max-width: 120px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        .member-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+        .ctrl-label { font-size: 0.72em; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+        .slot-input {
+            width: 100%;
+            background: #111116;
+            border: 1px solid #44445c;
+            color: #ffd700;
+            padding: 4px 6px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            box-sizing: border-box;
+        }
+        .slot-input::placeholder { color: #666; }
+        .slot-input:focus { outline: none; border-color: #ffd700; }
         .gain-input {
             width: 60px;
             background: #111116;
@@ -470,6 +489,7 @@ Joueur 8</textarea>
         let startAngle = 0;
         let teams = [];        // { id, name, members:[...], style }
         let matchGains = {};   // matchGains[matchId][teamId][memberIdx] = valeur
+        let matchSlots = {};   // matchSlots[matchId][teamId][memberIdx] = slot choisie
         let lastRounds = null;
         const canvas = document.getElementById("wheelCanvas");
         const ctx = canvas.getContext("2d");
@@ -563,6 +583,7 @@ Joueur 8</textarea>
             currentTeam = [];
             teams = [];
             matchGains = {};
+            matchSlots = {};
             document.getElementById("teamsList").innerHTML = "";
             document.getElementById("bracketContainer").innerHTML = '<p style="color: #aaa; font-size: 0.9em; text-align: center; font-style: italic;">Le bracket s\'affichera une fois toutes les équipes formées.</p>';
             document.getElementById("drawStatus").innerText = "Prêt ! Lancez la roue.";
@@ -769,14 +790,20 @@ Joueur 8</textarea>
             let rows = '';
             team.members.forEach((member, idx) => {
                 const stored = (matchGains[m.id] && matchGains[m.id][team.id] && matchGains[m.id][team.id][idx]) ?? '';
+                const storedSlot = (matchSlots[m.id] && matchSlots[m.id][team.id] && matchSlots[m.id][team.id][idx]) ?? '';
                 rows += `
                     <div class="member-row">
                         <span class="member-name">👤 ${member}</span>
-                        <div class="score-controls">
-                            <button class="score-btn" type="button" onclick="bumpGain('${m.id}','${team.id}',${idx},-10)">-</button>
-                            <input type="number" class="gain-input" min="0" step="10" placeholder="0"
-                                   value="${stored}" data-gain-key="${m.id}|${team.id}|${idx}" oninput="onGainInput(this)">
-                            <button class="score-btn" type="button" onclick="bumpGain('${m.id}','${team.id}',${idx},10)">+</button>
+                        <input type="text" class="slot-input" placeholder="Slot choisie…"
+                               value="${escAttr(storedSlot)}" data-slot-key="${m.id}|${team.id}|${idx}" oninput="onSlotInput(this)">
+                        <div class="member-controls">
+                            <span class="ctrl-label">Gain</span>
+                            <div class="score-controls">
+                                <button class="score-btn" type="button" onclick="bumpGain('${m.id}','${team.id}',${idx},-10)">-</button>
+                                <input type="number" class="gain-input" min="0" step="10" placeholder="0"
+                                       value="${stored}" data-gain-key="${m.id}|${team.id}|${idx}" oninput="onGainInput(this)">
+                                <button class="score-btn" type="button" onclick="bumpGain('${m.id}','${team.id}',${idx},10)">+</button>
+                            </div>
                         </div>
                     </div>`;
             });
@@ -891,10 +918,26 @@ Joueur 8</textarea>
             svg.innerHTML = paths;
         }
 
+        function escAttr(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
         function onGainInput(input) {
             const [matchId, teamId, idx] = String(input.dataset.gainKey || '').split('|');
             if (!matchId || !teamId) return;
             setGain(matchId, teamId, idx, input.value);
+        }
+
+        function onSlotInput(input) {
+            const [matchId, teamId, idx] = String(input.dataset.slotKey || '').split('|');
+            if (!matchId || !teamId) return;
+            if (!matchSlots[matchId]) matchSlots[matchId] = {};
+            if (!matchSlots[matchId][teamId]) matchSlots[matchId][teamId] = {};
+            matchSlots[matchId][teamId][idx] = input.value;
         }
 
         function setGain(matchId, teamId, idx, value) {
