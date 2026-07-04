@@ -109,6 +109,18 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (P6 — auth cloud boot)
+
+`scripts/pages/auth-cloud.js` (~2400 lignes) chargé **avant** `app.js` dans `index.html` :
+
+- Session Supabase, `initAuth`, profil / badge menu, drop quotidien + streak
+- Liaison Discord (modal profil + bandeau accueil)
+- `isCloudUser()`, soldes, objectifs hebdo profil, bannière mode jeux
+
+Contrairement aux modules hunt (lazy), l’auth doit être disponible avant le parse complet de `app.js` pour les globals `currentUser` / `getAuthClient()`.
+
+---
+
 ## Prod avancée (P5 — lazy catalogue slots)
 
 | Fichier | Rôle |
