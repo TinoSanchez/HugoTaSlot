@@ -109,6 +109,22 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (P10 — satellites boot)
+
+Modules chargés autour du noyau `app.js` (~480 lignes) :
+
+| Fichier | Rôle |
+|---------|------|
+| `catalog-url.js` | Helpers URLs casino / matching catalogue (`getBonusGoToUrl`, Gamdom SEO…) |
+| `hunt-templates.js` | Templates hunt, meta, presets filtres bonus |
+| `inapp-notifs.js` | Cloche notifications header + polling cloud |
+| `hunt-hooks.js` | Hub hunt tabs UI, hooks opener, FAB Gamdom, effets cinématiques |
+| `app-boot.js` | PWA, `trackPlayerGameStats`, SW, listeners `DOMContentLoaded` |
+
+`renderHomeHubMetrics` déplacé dans `hub-features.js` (lazy home).
+
+---
+
 ## Prod avancée (P9 — routing boot)
 
 `scripts/pages/page-router.js` (~950 lignes), chargé **après** `core-ui.js` et **avant** `app.js` :

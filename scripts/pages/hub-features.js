@@ -1,5 +1,5 @@
 'use strict';
-/* globals showToast, showAuth, isCloudUser, currentUser, escapeHtml, fmt, activeHunt, state, switchPage, showNewHuntModal, openOpener, openMiniOpener, openOrFocusStreamerHud, setStreamerOverlayEnabled, isStreamerOverlayEnabled, getAuthClient, cloudCall, withTimeout, bhWarn, computeRankFromWagered, ensurePlayerStatsReady, loadLazyPageScript */
+/* globals onlineCount, toEUR, showToast, showAuth, isCloudUser, currentUser, escapeHtml, fmt, activeHunt, state, switchPage, showNewHuntModal, openOpener, openMiniOpener, openOrFocusStreamerHud, setStreamerOverlayEnabled, isStreamerOverlayEnabled, getAuthClient, cloudCall, withTimeout, bhWarn, computeRankFromWagered, ensurePlayerStatsReady, loadLazyPageScript */
 
 var ONBOARDING_KEY = 'hm_onboarding_v1';
 var ONBOARDING_ROLE_KEY = 'hm_onboarding_role_v1';
@@ -606,4 +606,45 @@ async function submitActiveHuntToTournoi() {
       ? 'Lien live pré-rempli. Ajoute ta VOD quand elle est prête — le replay reste optionnel.'
       : 'Replay optionnel : sans lien, la validation admin peut prendre plus de temps.';
   }
+}
+
+
+/* renderHomeHubMetrics — extrait app.js P10 */
+function renderHomeHubMetrics() {
+  const hunts = state.hunts || [];
+  const huntCount = hunts.length;
+  const bonusCount = hunts.reduce((a, h) => a + ((h.bonuses || []).length), 0);
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const profitForWindow = (days) => hunts.reduce((acc, h) => {
+    const created = Number(h.createdAt || 0);
+    if (!created || (now - created) > (days * dayMs)) return acc;
+    const startEur = Number(h.startBalanceEUR || toEUR(Number(h.startBalance || 0), h.currency || 'EUR'));
+    const totalWin = (h.bonuses || []).reduce((w, b) => w + Number(b.win || 0), 0);
+    const totalWinEur = toEUR(totalWin, h.currency || 'EUR');
+    return acc + (totalWinEur - startEur);
+  }, 0);
+  const totalProfitEur = hunts.reduce((acc, h) => {
+    const startEur = Number(h.startBalanceEUR || toEUR(Number(h.startBalance || 0), h.currency || 'EUR'));
+    const totalWin = (h.bonuses || []).reduce((w, b) => w + Number(b.win || 0), 0);
+    const totalWinEur = toEUR(totalWin, h.currency || 'EUR');
+    return acc + (totalWinEur - startEur);
+  }, 0);
+  const p7 = profitForWindow(7);
+  const p30 = profitForWindow(30);
+  const eH = document.getElementById('home-kpi-hunts');
+  const eB = document.getElementById('home-kpi-bonus');
+  const eP = document.getElementById('home-kpi-profit');
+  const eO = document.getElementById('home-kpi-online');
+  const e7 = document.getElementById('home-kpi-profit-7d');
+  const e30 = document.getElementById('home-kpi-profit-30d');
+  if (eH) eH.textContent = String(huntCount);
+  if (eB) eB.textContent = String(bonusCount);
+  if (eP) {
+    eP.textContent = fmt(totalProfitEur, 'EUR');
+    eP.style.color = totalProfitEur >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  if (eO) eO.textContent = String(Math.max(1, onlineCount || 1));
+  if (e7) { e7.textContent = fmt(p7, 'EUR'); e7.style.color = p7 >= 0 ? 'var(--green)' : 'var(--red)'; }
+  if (e30) { e30.textContent = fmt(p30, 'EUR'); e30.style.color = p30 >= 0 ? 'var(--green)' : 'var(--red)'; }
 }

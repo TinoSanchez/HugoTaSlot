@@ -16,6 +16,7 @@ Référence rapide après la passe P0 → P3 + Passe 1 du refactoring multi-page
 | **P7** | Cloud hunts boot (`cloud-hunts.js`) — sync Supabase, circuit breaker, undo ; `app.js` ~3100 lignes |
 | **P8** | Core UI boot (`core-ui.js`) — SFX, toasts, confirm, maintenance, runtime logs, a11y nav/modales, recherche globale ; `app.js` ~2400 lignes |
 | **P9** | Routing boot (`page-router.js`) — URLs, `switchPage`, templates HTML, lazy loader, `initV101` ; `app.js` ~1600 lignes |
+| **P10** | Satellites boot — `catalog-url`, `hunt-templates`, `inapp-notifs`, `hunt-hooks`, `app-boot` ; `renderHomeHubMetrics` → hub-features ; `app.js` ~480 lignes (noyau) |
 | **Multi-pages Passe 1** | URLs distinctes par onglet (History API) ; lazy `jeux.json` ; infra `LAZY_PAGE_SCRIPTS` |
 
 ## En cours / récurrent
@@ -105,9 +106,10 @@ But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. M�
 
 **Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio), `stats`, **`admin`**, **`news`**, **`updates`**, **`review`**, **`hunt-export`**, **`hunt-public-live`**, **`hunt-workspace`**, **`hunt-opener`**, **`hunt-share`**.
 
-**Boot scripts** (dans `index.html`, avant `app.js`) : `auth-cloud.js` → `cloud-hunts.js` → `core-ui.js` → `page-router.js`.
+**Boot scripts** (dans `index.html`) :
+`auth-cloud.js` → `cloud-hunts.js` → `core-ui.js` → `catalog-url.js` → `hunt-templates.js` → `inapp-notifs.js` → `hunt-hooks.js` → `page-router.js` → **`app.js`** (noyau ~480 lignes) → `app-boot.js`
 
-**Reste dans `app.js`** (prochaine cible P10) : helpers catalogue URL, templates hunt, notifications in-app, hooks opener/Gamdom, PWA, `DOMContentLoaded` listeners.
+**Reste dans `app.js`** : état global (`state`), devises/fmt, dédup bonus, `scheduleHuntUI`, `init()`, health check Supabase, audit admin local.
 
 **Passe hunt (P3–P5)** : chaîne lazy `hunt-export` → `hunt-public-live` → **`catalog-slots`** → `hunt-workspace` → `hunt-opener` → `hunt-share`. Préchargée au boot via `init()` + `loadLazyPageScript('hunt')`. Studio dépend de `hunt-opener.js` pour l'opener stream.
 
