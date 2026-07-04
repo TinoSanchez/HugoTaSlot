@@ -51,6 +51,22 @@ jobs:
         run: npm run sync:recent-slots
         env:
           HUB88_PROBE_MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.full_enrich && '200' || '80' }}
+          INCLUDE_STAKE_NEW: ${{ github.event_name == 'workflow_dispatch' && inputs.full_enrich && '1' || '0' }}
+          STAKE_SKIP_BROWSER: '1'
+
+      - name: Sync catalogue Stake complet (nouveautés)
+        if: github.event_name == 'workflow_dispatch' && inputs.full_enrich
+        run: npm run sync:stake
+        env:
+          STAKE_FETCH_ONLY: '1'
+        continue-on-error: true
+        timeout-minutes: 20
+
+      - name: Enrichir vignettes via Stake (multi-slug + multi-sort)
+        if: github.event_name == 'workflow_dispatch' && inputs.full_enrich
+        run: npm run enrich:stake-placeholders -- --skip-browser
+        continue-on-error: true
+        timeout-minutes: 30
 
       - name: Enrichir vignettes (loose, fuzzy, Gamdom HTML, Hub88)
         run: npm run enrich:images
