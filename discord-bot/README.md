@@ -185,8 +185,8 @@ Mode **static** par défaut — portage du bloc `UpdatePresence()` RPC :
 
 | RPC (C++) | Variable `.env` | Défaut |
 |-----------|-----------------|--------|
-| `details` | `PRESENCE_DETAILS` | Competitive |
-| `state` | `PRESENCE_STATE` | Playing Solo |
+| `details` | `PRESENCE_DETAILS` | 19ENPLEIN CASINO |
+| `state` | `PRESENCE_STATE` | Gamdom · hugotaslot.fr (+ `1/5` si party configurée) |
 | `startTimestamp` | `PRESENCE_START_TS` | 1507665886 |
 | `endTimestamp` | `PRESENCE_END_TS` | 1507665886 |
 | `largeImageKey` | `PRESENCE_LARGE_IMAGE_KEY` | image_19 → `assets/rich-presence/image_19.png` |
@@ -199,7 +199,7 @@ Mode **static** par défaut — portage du bloc `UpdatePresence()` RPC :
 
 **Images obligatoires** : Developer Portal → **Rich Presence → Art Assets** — uploader `discord-bot/assets/rich-presence/image_19.png` (clé `image_19`) et `gamdom.png` (clé `gamdom`). Voir `assets/rich-presence/README.md`.
 
-> Discord peut ignorer `party` / `joinSecret` sur un **bot** (réservé aux jeux avec SDK). Le texte + images passent en général.
+> **Limite Discord (bots)** : le client n’affiche en général **que 2 lignes de texte** (`Joue à` + sous-titre). Les **images**, le badge **party 1/5**, le **join** et parfois le **chrono** sont **ignorés** pour un bot (contrairement au SDK RPC jeu). Le code envoie quand même assets/party pour compatibilité API ; le texte `state` inclut `· 1/5` si party configurée.
 
 Redéploie Railway après changement — pas besoin de `npm run register`.
 

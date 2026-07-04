@@ -65,10 +65,11 @@ export const config = {
     /** Mapping Discord RPC → discord.js (UpdatePresence static) */
     staticPresence: {
       type: opt('PRESENCE_TYPE', 'playing').toLowerCase(),
-      details: opt('PRESENCE_DETAILS', 'Competitive'),
-      state: opt('PRESENCE_STATE', 'Playing Solo'),
-      startTimestamp: parseInt(opt('PRESENCE_START_TS', '1507665886'), 10) || 0,
-      endTimestamp: parseInt(opt('PRESENCE_END_TS', '1507665886'), 10) || 0,
+      details: opt('PRESENCE_DETAILS', '19ENPLEIN CASINO'),
+      state: opt('PRESENCE_STATE', 'Gamdom · hugotaslot.fr'),
+      /** 0 = depuis le boot du bot (chrono visible si Discord l’accepte) */
+      startTimestamp: parseInt(opt('PRESENCE_START_TS', '0'), 10) || 0,
+      endTimestamp: parseInt(opt('PRESENCE_END_TS', '0'), 10) || 0,
       largeImageKey: opt('PRESENCE_LARGE_IMAGE_KEY', 'image_19'),
       largeImageText: opt('PRESENCE_LARGE_IMAGE_TEXT', '19ENPLEIN CASINO'),
       smallImageKey: opt('PRESENCE_SMALL_IMAGE_KEY', 'gamdom'),
