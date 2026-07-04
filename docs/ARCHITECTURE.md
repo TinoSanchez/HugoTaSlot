@@ -109,9 +109,23 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (P9 — routing boot)
+
+`scripts/pages/page-router.js` (~950 lignes), chargé **après** `core-ui.js` et **avant** `app.js` :
+
+| Module | Rôle |
+|--------|------|
+| `PAGE_TO_SLUG` / `pathToPage` / `pageToPath` | Mapping URL ↔ page (History API) |
+| `switchPage` / `switchHuntTab` | Navigation SPA + onglets hub hunt |
+| `__PAGE_HTML` + `mountCachedPage` | Templates HTML injectés à la demande |
+| `LAZY_PAGE_SCRIPTS` / `loadLazyPageScript` | Chargement différé des modules par page |
+| `initV101` | Init routing (URL initiale, popstate, prefetch home/hunt) |
+
+---
+
 ## Prod avancée (P8 — core UI boot)
 
-`scripts/pages/core-ui.js` (~650 lignes), chargé **après** `cloud-hunts.js` et **avant** `app.js` :
+`scripts/pages/core-ui.js` (~650 lignes), chargé **après** `cloud-hunts.js` et **avant** `page-router.js` :
 
 | Module | Rôle |
 |--------|------|
