@@ -99,12 +99,9 @@ But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. M�
 
 **Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio), `stats`, **`admin`**, **`news`**, **`updates`**, **`review`**.
 
-**Reste dans `app.js`** (prochaine cible) : cœur hunt/auth/cloud, notifications in-app.
+**Reste dans `app.js`** (prochaine cible) : workspace hunt (liste, bonus, opener), auth/cloud core, notifications in-app.
 
-Ordre suggéré pour la suite :
-
-1. **Cœur hunt** — extraction plus risquée (état partagé)
-2. Pipeline catalogue : `enrich:stake-placeholders` → `catalog:prune-orphans` pour les ~159 `sr_*` sans vignette
+**Passe 3 (partiel)** : `hunt-export.js`, `hunt-public-live.js`, `hunt-share.js` — export PNG/PDF, lien `/h/slug`, import/share code. Chargés au boot via `loadLazyPageScript('hunt')`.
 
 **Pattern à appliquer** pour chaque extraction (3 étapes) :
 1. Couper le bloc de fonctions de `app.js` → `./scripts/pages/<slug>.js` (les fonctions restent globales, pas de module ES — migration progressive sans réécrire les références).

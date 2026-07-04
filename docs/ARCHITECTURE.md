@@ -150,7 +150,7 @@ Le site reste **techniquement une SPA** (un seul `index.html`, état Supabase + 
 
 **Hunt live public (`/h/:slug`)** : page légère `hunt-live.html` (build → `web/dist`), rewrite Vercel `{ "source": "/h/:slug", "destination": "/hunt-live.html?slug=:slug" }`. Lit `get_public_hunt_share` via Supabase ; complément du bot Discord `/live`.
 
-**Passe 2 (admin/news/updates/review extrait)** : cœur hunt reste dans `app.js`. Plan : [BACKLOG.md](./BACKLOG.md#refactoring-multi-pages--état--suite).
+**Passe 3 (partiel)** : modules hunt lazy (`hunt-export`, `hunt-public-live`, `hunt-share`) — voir [BACKLOG.md](./BACKLOG.md).
 
 ---
 

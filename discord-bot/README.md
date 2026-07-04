@@ -234,9 +234,21 @@ Tu changes de serveur (communauté migrée) **sans recréer le bot** : garde la 
    ```
    Ou en local avec un `.env` à jour : `npm run register`.
 7. **Tester** sur le nouveau serveur :
-   - `/lastvideo`, `/slot`, `/link` (code généré sur le site)
-   - Admin site → publier une slot test → message dans `#nouvelles-slots` sous ~60 s
+   - `/hunts`, `/leaderboard`, `/live slug` (hunt public activé sur le site → `/h/…`)
+   - `/lastvideo`, `/slot`, `/link` (code généré sur le site → Profil)
+   - Admin site → slot test → `#nouvelles-slots` sous ~60 s **si** `DISCORD_CHANNEL_SLOTS` est renseigné (optionnel)
 8. **Ancien serveur** (optionnel) : Paramètres serveur → Intégrations → retirer le bot. Les anciennes commandes slash sur l’ancien guild disparaissent avec le bot.
+
+### Checklist rapide (migration serveur)
+
+| Étape | Action | OK |
+|-------|--------|-----|
+| 1 | Salons créés + IDs copiés | ☐ |
+| 2 | Bot invité sur le **nouveau** serveur (URL OAuth2 §3) | ☐ |
+| 3 | Railway : `DISCORD_GUILD_ID` = **ID serveur** (pas Application ID) | ☐ |
+| 4 | Railway : `DISCORD_CHANNEL_YOUTUBE` renseigné | ☐ |
+| 5 | Restart Railway + `railway run npm run register` | ☐ |
+| 6 | `/live` testé avec un slug hunt public | ☐ |
 
 ### Si tu recrées une **nouvelle** application Discord (nouveau bot)
 
@@ -246,7 +258,8 @@ En plus des étapes ci-dessus : nouveau `DISCORD_TOKEN`, nouveau `DISCORD_CLIENT
 
 | Problème | Piste |
 |----------|--------|
+| `Missing Access` (50001) au register | `DISCORD_GUILD_ID` = ID **serveur**, pas `DISCORD_CLIENT_ID` ; bot invité sur ce serveur |
 | Pas de commandes `/` visibles | `DISCORD_GUILD_ID` incorrect ou `npm run register` pas relancé |
-| Bot en ligne mais pas d’annonces | Mauvais ID de salon ou bot sans accès au salon |
-| « Channel slots non configuré » dans les logs | `DISCORD_CHANNEL_SLOTS` vide ou invalide |
+| Bot en ligne mais pas d’annonces YouTube | Mauvais ID de salon ou bot sans accès au salon |
+| « Channel slots non configuré » dans les logs | Normal si `DISCORD_CHANNEL_SLOTS` vide (annonces slots désactivées) |
 | Annonces dans l’ancien salon | Railway pas redémarré après changement de variables |
