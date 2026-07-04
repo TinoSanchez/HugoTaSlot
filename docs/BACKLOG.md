@@ -9,7 +9,8 @@ Référence rapide après la passe P0 → P3 + Passe 1 du refactoring multi-page
 | **P0** | Catalogue sans `jeux-embed.js` par défaut ; enrichissement vignettes ; SEO / OG / favicon |
 | **P1** | Découpage `index.html` → `styles.css` + `app.js` ; doc prod vs `web/` ; CI sync + enrich ; `npm test` |
 | **P2** | Mobile drawer ; a11y sidebar/modales ; libellés mode catalogue étendu |
-| **P3** | Logs `bhWarn` + debug ; PWA (`manifest`, `sw.js`) ; `jeux.json` allégé au build |
+| **P3** | Logs `bhWarn` + debug ; PWA (`manifest`, `sw.js`) ; `jeux.json` allégé au build ; hunt export/live/share lazy |
+| **P4** | Hunt workspace + opener extraits (`hunt-workspace.js`, `hunt-opener.js`) ; `app.js` ~6500 lignes |
 | **Multi-pages Passe 1** | URLs distinctes par onglet (History API) ; lazy `jeux.json` ; infra `LAZY_PAGE_SCRIPTS` |
 
 ## En cours / récurrent
@@ -97,11 +98,11 @@ Le site se comporte déjà comme un **vrai site multi-pages** côté UX, tout en
 
 But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. Méthode = extraire les fonctions par page dans des fichiers séparés et les charger via `LAZY_PAGE_SCRIPTS`.
 
-**Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio), `stats`, **`admin`**, **`news`**, **`updates`**, **`review`**.
+**Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio), `stats`, **`admin`**, **`news`**, **`updates`**, **`review`**, **`hunt-export`**, **`hunt-public-live`**, **`hunt-workspace`**, **`hunt-opener`**, **`hunt-share`**.
 
-**Reste dans `app.js`** (prochaine cible) : workspace hunt (liste, bonus, opener), auth/cloud core, notifications in-app.
+**Reste dans `app.js`** (prochaine cible) : auth/cloud core, notifications in-app, catalogue slots, hooks hunt légers.
 
-**Passe 3 (partiel)** : `hunt-export.js`, `hunt-public-live.js`, `hunt-share.js` — export PNG/PDF, lien `/h/slug`, import/share code. Chargés au boot via `loadLazyPageScript('hunt')`.
+**Passe hunt (P3–P4)** : chaîne lazy `hunt-export` → `hunt-public-live` → `hunt-workspace` → `hunt-opener` → `hunt-share`. Préchargée au boot via `init()` + `loadLazyPageScript('hunt')`. Studio dépend de `hunt-opener.js` pour l'opener stream.
 
 **Pattern à appliquer** pour chaque extraction (3 étapes) :
 1. Couper le bloc de fonctions de `app.js` → `./scripts/pages/<slug>.js` (les fonctions restent globales, pas de module ES — migration progressive sans réécrire les références).

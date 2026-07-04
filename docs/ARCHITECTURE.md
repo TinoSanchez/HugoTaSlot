@@ -109,6 +109,24 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (P4 — lazy hunt workspace)
+
+Extraction progressive du **workspace hunt** depuis `app.js` :
+
+| Fichier | Rôle |
+|---------|------|
+| `hunt-export.js` | Export PNG/PDF/JSON |
+| `hunt-public-live.js` | Lien public `/h/:slug`, publish live |
+| `hunt-workspace.js` | Liste hunts, modales, bonus, filtres, slot custom |
+| `hunt-opener.js` | Opener, mini-opener, HUD stream |
+| `hunt-share.js` | Import/export share code |
+
+Chaîne lazy (`LAZY_PAGE_DEPS.hunt`) : export → public-live → workspace → opener → share.  
+`loadLazyPageScript('hunt')` au boot (`init`) + à la navigation ; `applyHuntAppHooks()` patche `renderOpener` après chargement.  
+Studio charge `hunt-opener.js` via `LAZY_PAGE_DEPS.studio` pour le bouton opener stream.
+
+---
+
 ## Prod avancée (P3)
 
 - **Logs** : `console.warn` via `bhWarn` — activer avec `?debug=1`, `localStorage.setItem('bh_debug','1')` ou `window.__BH_DEBUG__ = true`. Les `console.error` restent visibles pour les incidents réels.
@@ -146,7 +164,7 @@ Le site reste **techniquement une SPA** (un seul `index.html`, état Supabase + 
 
 **Lazy `jeux.json`** : le catalogue (~1.9 Mo en prod) **n'est plus chargé au boot**. `ensureSlotsLoaded()` (promesse mémoïsée) le déclenche au premier `switchPage('hunt')`. `refreshCatalogSilently()` ne pre-fetch pas tant que l'utilisateur n'a jamais consulté le catalogue. Sur une session qui reste sur `/blackjack` ou `/studio`, `jeux.json` n'est **jamais téléchargé**.
 
-**Lazy modules par page** : registre `LAZY_PAGE_SCRIPTS` + dépendances `LAZY_PAGE_DEPS` dans `app.js` — modules dans `scripts/pages/` (blackjack, mini-jeux, hub-features, stats, admin, news, updates, review, etc.). `loadLazyPageScript(page)` charge les deps puis le script de page, en dédupliquant par URL.
+**Lazy modules par page** : registre `LAZY_PAGE_SCRIPTS` + dépendances `LAZY_PAGE_DEPS` dans `app.js` — modules dans `scripts/pages/` (blackjack, mini-jeux, hub-features, stats, admin, news, updates, review, **hunt-*** , etc.). `loadLazyPageScript(page)` charge les deps puis le script de page, en dédupliquant par URL. Hunt = chaîne de 5 scripts (voir section P4).
 
 **Hunt live public (`/h/:slug`)** : page légère `hunt-live.html` (build → `web/dist`), rewrite Vercel `{ "source": "/h/:slug", "destination": "/hunt-live.html?slug=:slug" }`. Lit `get_public_hunt_share` via Supabase ; complément du bot Discord `/live`.
 
