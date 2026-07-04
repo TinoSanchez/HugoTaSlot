@@ -146,9 +146,11 @@ Le site reste **techniquement une SPA** (un seul `index.html`, état Supabase + 
 
 **Lazy `jeux.json`** : le catalogue (~1.9 Mo en prod) **n'est plus chargé au boot**. `ensureSlotsLoaded()` (promesse mémoïsée) le déclenche au premier `switchPage('hunt')`. `refreshCatalogSilently()` ne pre-fetch pas tant que l'utilisateur n'a jamais consulté le catalogue. Sur une session qui reste sur `/blackjack` ou `/studio`, `jeux.json` n'est **jamais téléchargé**.
 
-**Lazy modules par page** : registre `LAZY_PAGE_SCRIPTS` dans `app.js` — modules dans `scripts/pages/` (blackjack, mini-jeux, hub-features, stats, etc.). `loadLazyPageScript(page)` déduplique par URL de script.
+**Lazy modules par page** : registre `LAZY_PAGE_SCRIPTS` + dépendances `LAZY_PAGE_DEPS` dans `app.js` — modules dans `scripts/pages/` (blackjack, mini-jeux, hub-features, stats, admin, news, updates, review, etc.). `loadLazyPageScript(page)` charge les deps puis le script de page, en dédupliquant par URL.
 
-**Passe 2 (en cours)** : extraire `admin`, `news`, `updates`, `review` de `app.js`. Plan : [BACKLOG.md](./BACKLOG.md#refactoring-multi-pages--état--suite).
+**Hunt live public (`/h/:slug`)** : page légère `hunt-live.html` (build → `web/dist`), rewrite Vercel `{ "source": "/h/:slug", "destination": "/hunt-live.html?slug=:slug" }`. Lit `get_public_hunt_share` via Supabase ; complément du bot Discord `/live`.
+
+**Passe 2 (admin/news/updates/review extrait)** : cœur hunt reste dans `app.js`. Plan : [BACKLOG.md](./BACKLOG.md#refactoring-multi-pages--état--suite).
 
 ---
 

@@ -97,15 +97,14 @@ Le site se comporte déjà comme un **vrai site multi-pages** côté UX, tout en
 
 But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. Méthode = extraire les fonctions par page dans des fichiers séparés et les charger via `LAZY_PAGE_SCRIPTS`.
 
-**Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio, lazy), `stats` (UI lazy).
+**Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio), `stats`, **`admin`**, **`news`**, **`updates`**, **`review`**.
 
-**Reste dans `app.js`** (prochaines cibles) : `admin`, `news`, `updates`, `review`, cœur hunt/auth/cloud.
+**Reste dans `app.js`** (prochaine cible) : cœur hunt/auth/cloud, notifications in-app.
 
 Ordre suggéré pour la suite :
 
-1. **`admin`** (~600 lignes) — `renderAdminPanel` + actions admin async
-2. **`news`** / **`updates`** / **`review`** — pages contenu + ops
-3. **Cœur hunt** — extraction plus risquée (état partagé)
+1. **Cœur hunt** — extraction plus risquée (état partagé)
+2. Pipeline catalogue : `enrich:stake-placeholders` → `catalog:prune-orphans` pour les ~159 `sr_*` sans vignette
 
 **Pattern à appliquer** pour chaque extraction (3 étapes) :
 1. Couper le bloc de fonctions de `app.js` → `./scripts/pages/<slug>.js` (les fonctions restent globales, pas de module ES — migration progressive sans réécrire les références).

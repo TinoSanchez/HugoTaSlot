@@ -15,15 +15,6 @@ const ROOT = resolve(__dirname, '..');
 const JEUX_PATH = resolve(ROOT, 'jeux.json');
 
 const MIN_ENTRIES = 5000;
-const MAX_PLACEHOLDERS = parseInt(
-  process.env.CATALOG_MAX_PLACEHOLDERS || '0',
-  10
-);
-
-function isPlaceholder(url) {
-  const u = String(url || '').toLowerCase();
-  return !u || u.includes('placehold.co') || u.includes('via.placeholder');
-}
 
 function loadCatalog() {
   assert.ok(existsSync(JEUX_PATH), 'jeux.json manquant');
@@ -81,16 +72,24 @@ describe('jeux.json', () => {
 
   test('plafond placeholders (régression grossière)', () => {
     const entries = loadCatalog();
-    let placeholders = 0;
-    let srPlaceholders = 0;
+    let badPlaceholders = 0;
+    let srEmptyImages = 0;
     for (const e of entries) {
-      if (!isPlaceholder(e.image)) continue;
-      placeholders++;
-      if (String(e.id).startsWith('sr_')) srPlaceholders++;
+      const u = String(e.image || '').toLowerCase();
+      if (u.includes('placehold.co') || u.includes('via.placeholder')) {
+        badPlaceholders++;
+      }
+      if (String(e.id).startsWith('sr_') && !u) srEmptyImages++;
     }
+    const maxBad = parseInt(process.env.CATALOG_MAX_PLACEHOLDERS || '0', 10);
+    const maxSrEmpty = parseInt(process.env.CATALOG_MAX_SR_EMPTY || '250', 10);
     assert.ok(
-      placeholders <= MAX_PLACEHOLDERS,
-      `trop de placeholders: ${placeholders} (max ${MAX_PLACEHOLDERS}, sr_*: ${srPlaceholders})`
+      badPlaceholders <= maxBad,
+      `URLs placeholder interdites: ${badPlaceholders} (max ${maxBad})`
+    );
+    assert.ok(
+      srEmptyImages <= maxSrEmpty,
+      `sr_* sans vignette en attente enrich: ${srEmptyImages} (max ${maxSrEmpty}) — lancer enrich:stake-placeholders puis catalog:prune-orphans`
     );
   });
 });
