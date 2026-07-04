@@ -115,7 +115,7 @@ async function cmdLastVideo(interaction) {
     .setTitle(data.title || 'Dernière vidéo')
     .setURL(data.url)
     .setImage(data.thumbnail || `https://i.ytimg.com/vi/${data.video_id}/maxresdefault.jpg`)
-    .setAuthor({ name: data.channel_label || 'HugoTaSlot' })
+    .setAuthor({ name: data.channel_label || '19enplein' })
     .setTimestamp(new Date(data.published_at));
   if (data.description) embed.setDescription(String(data.description).slice(0, 350));
   return interaction.editReply({ embeds: [embed] });

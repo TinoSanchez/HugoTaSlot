@@ -37,11 +37,19 @@ Active **Mode développeur** dans Discord (Paramètres → Avancés → Mode dé
 
 ## 3. Récupérer l'ID de la chaîne YouTube
 
-1. Va sur la page de la chaîne HugoTaSlot
-2. Clique sur **Partager la chaîne** → **Copier l'ID de la chaîne**
-3. Ça commence par `UC…` → `YOUTUBE_CHANNEL_ID`
+Chaîne actuelle : **[@19enpleinn](https://www.youtube.com/@19enpleinn)**
 
-> Pas besoin de clé API YouTube : on utilise le flux RSS public (illimité, gratuit).
+Variables Railway :
+
+```env
+YOUTUBE_CHANNEL_HANDLE=19enpleinn
+YOUTUBE_CHANNEL_ID=UC33jMbT4OaTdnb1oC6XVYgA   # optionnel (résolu auto depuis le handle)
+YOUTUBE_CHANNEL_LABEL=19enplein
+```
+
+Résolution manuelle : `node scripts/resolve-youtube-channel.mjs @19enpleinn`
+
+> Pas besoin de clé API YouTube : flux RSS Atom public (`feeds/videos.xml?channel_id=UC…`).
 
 ## 4. Créer les tables Supabase
 

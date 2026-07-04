@@ -2,6 +2,7 @@ import { EmbedBuilder } from 'discord.js';
 import { config } from '../config.js';
 import { child } from '../lib/logger.js';
 import { fetchFeed } from '../lib/rss.js';
+import { getYoutubeChannelId, youtubeChannelPublicUrl } from '../lib/youtube-channel.js';
 import { supabase } from '../supabase.js';
 import { getChannelSafe } from '../discord/client.js';
 
@@ -9,9 +10,9 @@ const log = child({ mod: 'youtube' });
 const CHANNEL_LOOKBACK_HOURS = 72; // ne pas spammer si on redécouvre des très vieilles vidéos
 
 export async function runYoutubeCheck() {
-  const channelId = config.youtube.channelId;
-  if (!channelId) { log.warn('YOUTUBE_CHANNEL_ID non défini, skip'); return { skipped: true }; }
-  const url = config.youtube.rssUrl();
+  const channelId = await getYoutubeChannelId(config.youtube);
+  if (!channelId) { log.warn('YOUTUBE_CHANNEL_ID / YOUTUBE_CHANNEL_HANDLE non défini, skip'); return { skipped: true }; }
+  const url = config.youtube.rssUrl(channelId);
   if (!url) return { skipped: true };
   const start = Date.now();
   let feed;
@@ -76,15 +77,16 @@ export async function runYoutubeCheck() {
 async function announce(item, channelId) {
   const ch = await getChannelSafe(config.discord.channels.youtube);
   if (!ch) { log.warn('Channel YouTube non configuré ou introuvable'); return null; }
-  const label = config.youtube.channelLabel || 'HugoTaSlot';
+  const label = config.youtube.channelLabel || '19enplein';
+  const channelUrl = youtubeChannelPublicUrl(config.youtube, channelId);
   const embed = new EmbedBuilder()
     .setColor(0x7F5A83)
-    .setAuthor({ name: `Nouvelle vidéo · ${label}`, url: `https://www.youtube.com/channel/${channelId}` })
+    .setAuthor({ name: `Nouvelle vidéo · ${label}`, url: channelUrl })
     .setTitle(item.title?.slice(0, 250) || 'Nouvelle vidéo')
     .setURL(item.url)
     .setImage(item.image || `https://i.ytimg.com/vi/${item.videoId}/maxresdefault.jpg`)
     .setTimestamp(item.publishedAt ? new Date(item.publishedAt) : new Date())
-    .setFooter({ text: 'YouTube · HugoTaSlot' });
+    .setFooter({ text: `YouTube · ${label}` });
   if (item.summary) embed.setDescription(item.summary.slice(0, 350));
   try {
     return await ch.send({ content: `🎬 **${label}** vient de poster une vidéo !`, embeds: [embed] });

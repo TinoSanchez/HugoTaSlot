@@ -36,7 +36,8 @@ export const config = {
   },
   youtube: {
     channelId: opt('YOUTUBE_CHANNEL_ID', ''),
-    channelLabel: opt('YOUTUBE_CHANNEL_LABEL', 'HugoTaSlot'),
+    channelHandle: opt('YOUTUBE_CHANNEL_HANDLE', '19enpleinn'),
+    channelLabel: opt('YOUTUBE_CHANNEL_LABEL', '19enplein'),
     rssUrl(channelId = '') {
       const id = (channelId || this.channelId || '').trim();
       return id ? `https://www.youtube.com/feeds/videos.xml?channel_id=${id}` : '';
