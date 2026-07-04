@@ -448,6 +448,22 @@ async function load() {
 
 let netBannerEl = null;
 
+function showNetBanner(text, bad = false) {
+  if (!netBannerEl) {
+    netBannerEl = document.createElement('div');
+    netBannerEl.id = 'net-banner';
+    netBannerEl.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:3000;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);font-family:"Share Tech Mono",monospace;font-size:11px;background:#0A0A0C;color:#EDEEF2;box-shadow:0 10px 24px rgba(0,0,0,0.35)';
+    document.body.appendChild(netBannerEl);
+  }
+  netBannerEl.textContent = text;
+  netBannerEl.style.borderColor = bad ? 'rgba(255,61,90,0.45)' : 'rgba(0,230,118,0.42)';
+  netBannerEl.style.color = bad ? '#ff9fb1' : '#91ffd0';
+  netBannerEl.style.display = 'block';
+}
+function hideNetBanner() {
+  if (netBannerEl) netBannerEl.style.display = 'none';
+}
+
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 async function withTimeout(promiseFactory, timeoutMs = 9000) {
   let to = null;

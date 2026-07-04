@@ -109,9 +109,26 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (P8 — core UI boot)
+
+`scripts/pages/core-ui.js` (~650 lignes), chargé **après** `cloud-hunts.js` et **avant** `app.js` :
+
+| Module | Rôle |
+|--------|------|
+| SFX / `playUiTone` / `gameWinFx` | Retours sonores UI et gains |
+| `showToast` / `confirm` / `confirmRich` | Feedback utilisateur et modales de confirmation |
+| Maintenance | `refreshMaintenanceConfig`, `requireWriteAccess`, bannière mode lecture seule |
+| Runtime logs | `pushRuntimeLog`, alertes ops locales |
+| A11y mobile | `initSidebarNavA11y`, `initModalA11yObserver` |
+| `runGlobalSearch` | Recherche globale sidebar (Ctrl+K) |
+
+La bannière réseau (`showNetBanner` / `hideNetBanner`) reste dans `cloud-hunts.js` (partagée avec `cloudCall` et les handlers offline de `app.js`).
+
+---
+
 ## Prod avancée (P7 — cloud hunts boot)
 
-`scripts/pages/cloud-hunts.js` (~600 lignes), chargé **après** `auth-cloud.js` et **avant** `app.js` :
+`scripts/pages/cloud-hunts.js` (~600 lignes), chargé **après** `auth-cloud.js` et **avant** `core-ui.js` :
 
 | Module | Rôle |
 |--------|------|

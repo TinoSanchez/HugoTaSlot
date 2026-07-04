@@ -14,6 +14,7 @@ Référence rapide après la passe P0 → P3 + Passe 1 du refactoring multi-page
 | **P5** | Catalogue slots lazy (`catalog-slots.js`) — grille, loadSlots, refresh, ensureSlotsLoaded |
 | **P6** | Auth cloud boot (`auth-cloud.js`) — session, profil, drop, Discord ; `app.js` ~3600 lignes |
 | **P7** | Cloud hunts boot (`cloud-hunts.js`) — sync Supabase, circuit breaker, undo ; `app.js` ~3100 lignes |
+| **P8** | Core UI boot (`core-ui.js`) — SFX, toasts, confirm, maintenance, runtime logs, a11y nav/modales, recherche globale ; `app.js` ~2400 lignes |
 | **Multi-pages Passe 1** | URLs distinctes par onglet (History API) ; lazy `jeux.json` ; infra `LAZY_PAGE_SCRIPTS` |
 
 ## En cours / récurrent
@@ -103,9 +104,9 @@ But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. M�
 
 **Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio), `stats`, **`admin`**, **`news`**, **`updates`**, **`review`**, **`hunt-export`**, **`hunt-public-live`**, **`hunt-workspace`**, **`hunt-opener`**, **`hunt-share`**.
 
-**Reste dans `app.js`** (prochaine cible) : notifications in-app, routing, helpers catalogue URL, mini-jeux hooks.
+**Boot scripts** (dans `index.html`, avant `app.js`) : `auth-cloud.js` → `cloud-hunts.js` → `core-ui.js`.
 
-**Boot scripts** (dans `index.html`, avant `app.js`) : `auth-cloud.js` puis `cloud-hunts.js`.
+**Reste dans `app.js`** (prochaine cible P9) : routing (`switchPage`, `__PAGE_HTML`), helpers catalogue URL, templates hunt, init boot.
 
 **Passe hunt (P3–P5)** : chaîne lazy `hunt-export` → `hunt-public-live` → **`catalog-slots`** → `hunt-workspace` → `hunt-opener` → `hunt-share`. Préchargée au boot via `init()` + `loadLazyPageScript('hunt')`. Studio dépend de `hunt-opener.js` pour l'opener stream.
 
