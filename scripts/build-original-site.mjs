@@ -6,7 +6,6 @@ import { optimizeCatalogArray } from "./lib/optimize-catalog-json.mjs";
 const root = process.cwd();
 
 execSync("node scripts/build-boot-bundle.mjs", { cwd: root, stdio: "inherit" });
-execSync("node scripts/build-discord-activity.mjs", { cwd: root, stdio: "inherit" });
 const outDir = resolve(root, "web", "dist");
 
 // Version de cache service worker : calculée une fois pour le build
@@ -67,5 +66,7 @@ if (existsSync(jeuxSrc)) {
   const after = Buffer.byteLength(JSON.stringify(optimized));
   console.log(`jeux.json optimisé pour dist: ${(before / 1024).toFixed(0)} KiB → ${(after / 1024).toFixed(0)} KiB`);
 }
+
+execSync("node scripts/build-discord-activity.mjs", { cwd: root, stdio: "inherit" });
 
 console.log("Build original site complete:", outDir);

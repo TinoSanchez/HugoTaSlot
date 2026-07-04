@@ -1,4 +1,4 @@
-import { DiscordSDK } from '@discord/embedded-app-sdk';
+import { DiscordSDK, patchUrlMappings } from '@discord/embedded-app-sdk';
 
 const statusEl = document.getElementById('status');
 const siteLink = document.getElementById('site-link');
@@ -16,8 +16,9 @@ async function loadConfig() {
   return r.json();
 }
 
-async function exchangeToken(code, clientId) {
-  const r = await fetch('/api/discord-activity/token', {
+async function exchangeToken(code, siteUrl) {
+  patchUrlMappings([{ prefix: '/ht-api', target: 'hugotaslot.fr' }]);
+  const r = await fetch('/ht-api/api/discord-activity/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
@@ -74,7 +75,7 @@ async function main() {
       scope: ['identify', 'rpc.activities.write'],
     });
 
-    const accessToken = await exchangeToken(code, clientId);
+    const accessToken = await exchangeToken(code, siteUrl);
     await discordSdk.commands.authenticate({ access_token: accessToken });
 
     await applyRichPresence(discordSdk, siteUrl);

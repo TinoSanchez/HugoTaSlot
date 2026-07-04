@@ -465,6 +465,7 @@ async function cmdActivity(interaction) {
       + '1. Clique sur le **+** (ou icône apps) dans un salon vocal ou texte\n'
       + '2. Choisis **HugoTaSlot** / **Bot enplein** dans la liste Activities\n'
       + '3. L’Activity s’ouvre → ta présence affiche les images\n\n'
+      + '**URL Mappings Portal :** `/` → `activity.hugotaslot.fr` · `/ht-api` → `hugotaslot.fr`\n\n'
       + '*(Les bots seuls ne peuvent pas afficher les images — seuls les joueurs dans l’Activity le peuvent.)*',
     )
     .setURL(`${config.site.url}/discord-activity/`)
