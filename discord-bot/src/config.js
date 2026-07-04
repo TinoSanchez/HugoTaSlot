@@ -53,6 +53,43 @@ export const config = {
   site: {
     url: opt('SITE_URL', 'https://hugotaslot.fr'),
   },
+  presence: {
+    /** off | static | rotate */
+    mode: (() => {
+      const m = opt('PRESENCE_MODE', 'static').toLowerCase();
+      if (m === 'off' || m === 'static' || m === 'rotate') return m;
+      return 'static';
+    })(),
+    status: opt('PRESENCE_STATUS', 'online'),
+    intervalMs: Math.max(30_000, parseInt(opt('PRESENCE_INTERVAL_MS', '120000'), 10) || 120_000),
+    /** Mapping Discord RPC → discord.js (UpdatePresence static) */
+    staticPresence: {
+      type: opt('PRESENCE_TYPE', 'playing').toLowerCase(),
+      details: opt('PRESENCE_DETAILS', 'Competitive'),
+      state: opt('PRESENCE_STATE', 'Playing Solo'),
+      startTimestamp: parseInt(opt('PRESENCE_START_TS', '1507665886'), 10) || 0,
+      endTimestamp: parseInt(opt('PRESENCE_END_TS', '1507665886'), 10) || 0,
+      largeImageKey: opt('PRESENCE_LARGE_IMAGE_KEY', 'image_19'),
+      largeImageText: opt('PRESENCE_LARGE_IMAGE_TEXT', 'Numbani'),
+      smallImageKey: opt('PRESENCE_SMALL_IMAGE_KEY', 'gemini_generated_image_e3i4q1e3i4q1e3i4'),
+      smallImageText: opt('PRESENCE_SMALL_IMAGE_TEXT', 'Rogue - Level 100'),
+      partyId: opt('PRESENCE_PARTY_ID', 'ae488379-351d-4a4f-ad32-2b9b01c91657'),
+      partySize: parseInt(opt('PRESENCE_PARTY_SIZE', '1'), 10) || 1,
+      partyMax: parseInt(opt('PRESENCE_PARTY_MAX', '5'), 10) || 5,
+      joinSecret: opt('PRESENCE_JOIN_SECRET', 'MTI4NzM0OjFpMmhuZToxMjMxMjM='),
+      url: opt('PRESENCE_URL', opt('SITE_URL', 'https://hugotaslot.fr')),
+    },
+    rotation: (() => {
+      const raw = opt('PRESENCE_ROTATION_JSON', '');
+      if (!raw) return [];
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })(),
+  },
   log: {
     level: opt('LOG_LEVEL', 'info'),
   },

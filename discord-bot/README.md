@@ -179,14 +179,38 @@ discord-bot/
 └── .env.example
 ```
 
-## 13. Sécurité
+## 13. Rich Presence (statut du bot)
+
+Mode **static** par défaut — portage du bloc `UpdatePresence()` RPC :
+
+| RPC (C++) | Variable `.env` | Défaut |
+|-----------|-----------------|--------|
+| `details` | `PRESENCE_DETAILS` | Competitive |
+| `state` | `PRESENCE_STATE` | Playing Solo |
+| `startTimestamp` | `PRESENCE_START_TS` | 1507665886 |
+| `endTimestamp` | `PRESENCE_END_TS` | 1507665886 |
+| `largeImageKey` | `PRESENCE_LARGE_IMAGE_KEY` | image_19 |
+| `largeImageText` | `PRESENCE_LARGE_IMAGE_TEXT` | Numbani |
+| `smallImageKey` | `PRESENCE_SMALL_IMAGE_KEY` | gemini_generated_image_e3i4q1e3i4q1e3i4 |
+| `smallImageText` | `PRESENCE_SMALL_IMAGE_TEXT` | Rogue - Level 100 |
+| `partyId` | `PRESENCE_PARTY_ID` | ae488379-… |
+| `partySize` / `partyMax` | `PRESENCE_PARTY_SIZE` / `PRESENCE_PARTY_MAX` | 1 / 5 |
+| `joinSecret` | `PRESENCE_JOIN_SECRET` | (secret base64) |
+
+**Images obligatoires** : Developer Portal → ton application → **Rich Presence → Art Assets** → upload avec les **mêmes clés** (`image_19`, `gemini_generated_image_e3i4q1e3i4q1e3i4`). Sans ça, Discord n’affiche que le texte.
+
+> Discord peut ignorer `party` / `joinSecret` sur un **bot** (réservé aux jeux avec SDK). Le texte + images passent en général.
+
+Redéploie Railway après changement — pas besoin de `npm run register`.
+
+## 14. Sécurité
 
 - ✅ La **service_role key** n'est utilisée que côté bot (jamais côté front).
 - ✅ RLS Supabase active : lecture publique de `youtube_videos` / `slot_releases`, écriture limitée admin / service_role.
 - ✅ Le code de liaison `/link` expire en 15 min et n'est valable qu'une fois.
 - ✅ Aucun secret commit (`.env` ignoré par git).
 
-## 14. Idées d’évolution
+## 15. Idées d’évolution
 
 - Proxy payant (ScraperAPI, etc.) si un jour tu veux remettre un fetcher direct Stake/Gamdom
 - Enrichir `jeux.json` plus souvent sur le site pour affiner la dédup
@@ -197,7 +221,7 @@ Privé / interne au projet HugoTaSlot.
 
 ---
 
-## 15. Migration vers un nouveau serveur Discord
+## 16. Migration vers un nouveau serveur Discord
 
 Tu changes de serveur (communauté migrée) **sans recréer le bot** : garde la même application Discord + le même déploiement Railway. Seuls les IDs Discord et l’invitation changent.
 

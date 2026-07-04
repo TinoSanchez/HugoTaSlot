@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { config } from '../config.js';
 import { child } from '../lib/logger.js';
+import { setupPresence } from './presence.js';
 
 const log = child({ mod: 'discord' });
 
@@ -10,7 +11,8 @@ export const client = new Client({
 });
 
 client.once('ready', (c) => {
-  log.info({ tag: c.user.tag, id: c.user.id }, 'Bot Discord prêt');
+  log.info({ tag: c.user.tag, id: c.user.id, presence: config.presence.mode }, 'Bot Discord prêt');
+  setupPresence(c);
 });
 
 client.on('error', (err) => log.error({ err }, 'Discord client error'));
