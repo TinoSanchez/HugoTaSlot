@@ -123,8 +123,10 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 - `scripts/e2e/auth-smoke.mjs` — overlay auth, mode invité, profil, RPC `get_site_maintenance`, bannière mini-jeux ; cloud si `E2E_CLOUD_EMAIL` / `E2E_CLOUD_PASSWORD`
 - `scripts/e2e/site-smoke.mjs` — routing, hunt local, historique
-- `scripts/e2e/run-e2e.mjs` — lance `serve.js` + les deux smokes
-- CI : `npx playwright install chromium` puis `npm run test:e2e`
+- `scripts/e2e/run-e2e.mjs` — lance `serve.js` + les deux smokes (local / CI)
+- `scripts/e2e/run-e2e-remote.mjs` — même smokes contre `E2E_BASE_URL` (défaut prod)
+- CI : `npx playwright install chromium` puis `npm run test:e2e` ; secrets optionnels `E2E_CLOUD_*`
+- Workflow **`e2e-prod.yml`** : `npm run test:e2e:prod` (dispatch manuel + lundi 06:00 UTC)
 
 ### P11
 

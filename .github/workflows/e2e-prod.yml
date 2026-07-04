@@ -1,0 +1,38 @@
+# Smoke Playwright sur la prod (manuel ou hebdo).
+# Secrets optionnels : E2E_CLOUD_EMAIL, E2E_CLOUD_PASSWORD
+
+name: E2E prod
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: e2e-prod
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Installer Chromium (Playwright)
+        run: npx playwright install chromium
+
+      - name: Smoke prod (auth + routing)
+        run: npm run test:e2e:prod
+        env:
+          E2E_BASE_URL: https://hugotaslot.fr
+          E2E_CLOUD_EMAIL: ${{ secrets.E2E_CLOUD_EMAIL }}
+          E2E_CLOUD_PASSWORD: ${{ secrets.E2E_CLOUD_PASSWORD }}

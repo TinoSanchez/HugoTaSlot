@@ -102,7 +102,10 @@ boot-bundle.js  →  app.js (~400 lignes)  →  app-boot.js
 | Commande | Rôle |
 |----------|------|
 | `npm test` | Smoke catalogue + build dist |
-| `npm run test:e2e` | Playwright : auth invité + RPC Supabase + routing/hunt (voir `scripts/e2e/`) |
+| `npm run test:e2e` | Playwright local : auth invité + RPC Supabase + routing/hunt |
+| `npm run test:e2e:prod` | Même scénarios sur **https://hugotaslot.fr** (sans serveur local) |
+
+Variables optionnelles E2E : `E2E_BASE_URL`, `E2E_CLOUD_EMAIL`, `E2E_CLOUD_PASSWORD` (connexion cloud dans `auth-smoke.mjs`). CI : secrets GitHub homonymes ; workflow manuel/hebdo `.github/workflows/e2e-prod.yml`.
 
 ### Ancienne section Passe 2 (archive)
 

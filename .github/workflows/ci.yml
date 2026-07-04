@@ -41,3 +41,7 @@ jobs:
 
       - name: Tests E2E smoke (routing + pages)
         run: npm run test:e2e
+        env:
+          # Optionnel : compte dédié CI pour le scénario cloud dans auth-smoke.mjs
+          E2E_CLOUD_EMAIL: ${{ secrets.E2E_CLOUD_EMAIL }}
+          E2E_CLOUD_PASSWORD: ${{ secrets.E2E_CLOUD_PASSWORD }}

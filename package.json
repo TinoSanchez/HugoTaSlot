@@ -6,6 +6,7 @@
     "start": "node serve.js",
     "test": "node --test scripts/catalog-smoke.test.mjs scripts/stake-match.test.mjs scripts/cloud-core.test.mjs",
     "test:e2e": "node scripts/build-boot-bundle.mjs && node scripts/e2e/run-e2e.mjs",
+    "test:e2e:prod": "node scripts/e2e/run-e2e-remote.mjs",
     "build:boot": "node scripts/build-boot-bundle.mjs",
     "verify:supabase": "node scripts/verify-supabase-migrations.mjs",
     "dev": "vite web",
