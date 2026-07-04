@@ -189,15 +189,15 @@ Mode **static** par défaut — portage du bloc `UpdatePresence()` RPC :
 | `state` | `PRESENCE_STATE` | Playing Solo |
 | `startTimestamp` | `PRESENCE_START_TS` | 1507665886 |
 | `endTimestamp` | `PRESENCE_END_TS` | 1507665886 |
-| `largeImageKey` | `PRESENCE_LARGE_IMAGE_KEY` | image_19 |
-| `largeImageText` | `PRESENCE_LARGE_IMAGE_TEXT` | Numbani |
-| `smallImageKey` | `PRESENCE_SMALL_IMAGE_KEY` | gemini_generated_image_e3i4q1e3i4q1e3i4 |
-| `smallImageText` | `PRESENCE_SMALL_IMAGE_TEXT` | Rogue - Level 100 |
+| `largeImageKey` | `PRESENCE_LARGE_IMAGE_KEY` | image_19 → `assets/rich-presence/image_19.png` |
+| `largeImageText` | `PRESENCE_LARGE_IMAGE_TEXT` | 19ENPLEIN CASINO |
+| `smallImageKey` | `PRESENCE_SMALL_IMAGE_KEY` | gamdom → `assets/rich-presence/gamdom.png` |
+| `smallImageText` | `PRESENCE_SMALL_IMAGE_TEXT` | Gamdom |
 | `partyId` | `PRESENCE_PARTY_ID` | ae488379-… |
 | `partySize` / `partyMax` | `PRESENCE_PARTY_SIZE` / `PRESENCE_PARTY_MAX` | 1 / 5 |
 | `joinSecret` | `PRESENCE_JOIN_SECRET` | (secret base64) |
 
-**Images obligatoires** : Developer Portal → ton application → **Rich Presence → Art Assets** → upload avec les **mêmes clés** (`image_19`, `gemini_generated_image_e3i4q1e3i4q1e3i4`). Sans ça, Discord n’affiche que le texte.
+**Images obligatoires** : Developer Portal → **Rich Presence → Art Assets** — uploader `discord-bot/assets/rich-presence/image_19.png` (clé `image_19`) et `gamdom.png` (clé `gamdom`). Voir `assets/rich-presence/README.md`.
 
 > Discord peut ignorer `party` / `joinSecret` sur un **bot** (réservé aux jeux avec SDK). Le texte + images passent en général.
 
