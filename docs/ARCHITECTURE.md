@@ -109,6 +109,17 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (P5 — lazy catalogue slots)
+
+| Fichier | Rôle |
+|---------|------|
+| `catalog-slots.js` | Chargement `jeux.json`, indexes, grille, recherche, refresh silencieux |
+
+Inséré dans `LAZY_PAGE_DEPS.hunt` **avant** `hunt-workspace.js` (la grille appelle `openAddModal` au clic).  
+`initCatalogSlotsUi()` enregistre les listeners recherche / scroll / mode catalogue au chargement du script.
+
+---
+
 ## Prod avancée (P4 — lazy hunt workspace)
 
 Extraction progressive du **workspace hunt** depuis `app.js` :

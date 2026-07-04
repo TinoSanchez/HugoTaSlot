@@ -11,6 +11,7 @@ Référence rapide après la passe P0 → P3 + Passe 1 du refactoring multi-page
 | **P2** | Mobile drawer ; a11y sidebar/modales ; libellés mode catalogue étendu |
 | **P3** | Logs `bhWarn` + debug ; PWA (`manifest`, `sw.js`) ; `jeux.json` allégé au build ; hunt export/live/share lazy |
 | **P4** | Hunt workspace + opener extraits (`hunt-workspace.js`, `hunt-opener.js`) ; `app.js` ~6500 lignes |
+| **P5** | Catalogue slots lazy (`catalog-slots.js`) — grille, loadSlots, refresh, ensureSlotsLoaded |
 | **Multi-pages Passe 1** | URLs distinctes par onglet (History API) ; lazy `jeux.json` ; infra `LAZY_PAGE_SCRIPTS` |
 
 ## En cours / récurrent
@@ -102,7 +103,7 @@ But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. M�
 
 **Reste dans `app.js`** (prochaine cible) : auth/cloud core, notifications in-app, catalogue slots, hooks hunt légers.
 
-**Passe hunt (P3–P4)** : chaîne lazy `hunt-export` → `hunt-public-live` → `hunt-workspace` → `hunt-opener` → `hunt-share`. Préchargée au boot via `init()` + `loadLazyPageScript('hunt')`. Studio dépend de `hunt-opener.js` pour l'opener stream.
+**Passe hunt (P3–P5)** : chaîne lazy `hunt-export` → `hunt-public-live` → **`catalog-slots`** → `hunt-workspace` → `hunt-opener` → `hunt-share`. Préchargée au boot via `init()` + `loadLazyPageScript('hunt')`. Studio dépend de `hunt-opener.js` pour l'opener stream.
 
 **Pattern à appliquer** pour chaque extraction (3 étapes) :
 1. Couper le bloc de fonctions de `app.js` → `./scripts/pages/<slug>.js` (les fonctions restent globales, pas de module ES — migration progressive sans réécrire les références).
