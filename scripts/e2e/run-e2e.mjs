@@ -36,13 +36,17 @@ server.stderr?.on('data', (d) => { serverOut += d; });
 
 try {
   await waitForServer(`${BASE}/`);
-  const e2e = spawn(process.execPath, ['scripts/e2e/site-smoke.mjs'], {
-    cwd: ROOT,
-    env: { ...process.env, E2E_BASE_URL: BASE },
-    stdio: 'inherit',
-  });
-  const code = await new Promise((res) => e2e.on('close', res));
-  if (code !== 0) process.exit(code || 1);
+  const scripts = ['auth-smoke.mjs', 'site-smoke.mjs'];
+  for (const name of scripts) {
+    console.log(`\n▶ ${name}\n`);
+    const e2e = spawn(process.execPath, [`scripts/e2e/${name}`], {
+      cwd: ROOT,
+      env: { ...process.env, E2E_BASE_URL: BASE },
+      stdio: 'inherit',
+    });
+    const code = await new Promise((res) => e2e.on('close', res));
+    if (code !== 0) process.exit(code || 1);
+  }
 } catch (e) {
   console.error(e.message || e);
   if (serverOut) console.error(serverOut.slice(-2000));

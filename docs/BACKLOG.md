@@ -102,7 +102,7 @@ boot-bundle.js  →  app.js (~400 lignes)  →  app-boot.js
 | Commande | Rôle |
 |----------|------|
 | `npm test` | Smoke catalogue + build dist |
-| `npm run test:e2e` | Playwright : accueil, `/blackjack`, `/hunt`, création hunt local, `/mise-optimale`, mini-jeux, back navigateur, `/updates` |
+| `npm run test:e2e` | Playwright : auth invité + RPC Supabase + routing/hunt (voir `scripts/e2e/`) |
 
 ### Ancienne section Passe 2 (archive)
 
