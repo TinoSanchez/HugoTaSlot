@@ -55,6 +55,9 @@ export const commandDefs = [
       .setDescription('Tape le nom (ex. Hounds of Hell) puis choisis dans la liste')
       .setRequired(false)
       .setAutocomplete(true)),
+  new SlashCommandBuilder()
+    .setName('activity')
+    .setDescription('Lance l’Activity HugoTaSlot (Rich Presence avec logos 19ENPLEIN / Gamdom).'),
 ].map((c) => c.toJSON());
 
 /* ─── Dispatcher ──────────────────────────────────────────────────────── */
@@ -83,6 +86,7 @@ export async function registerInteractionHandlers(client) {
         case 'live': return cmdLive(interaction);
         case 'slot': return cmdRandomSlot(interaction);
         case 'call': return cmdCall(interaction);
+        case 'activity': return cmdActivity(interaction);
         default: return interaction.reply({ content: 'Commande inconnue.', flags: MessageFlags.Ephemeral });
       }
     } catch (e) {
@@ -448,4 +452,22 @@ async function cmdLive(interaction) {
   if (thumb) embed.setThumbnail(String(thumb));
   embed.setFooter({ text: 'HugoTaSlot · hunt public partagé' });
   return interaction.editReply({ embeds: [embed] });
+}
+
+/* ─── /activity ─────────────────────────────────────────────────────── */
+async function cmdActivity(interaction) {
+  const embed = new EmbedBuilder()
+    .setColor(COLOR)
+    .setTitle('Activity HugoTaSlot')
+    .setDescription(
+      'Lance l’**Activity** pour afficher la **Rich Presence complète** (logos 19ENPLEIN + Gamdom) sur ton profil.\n\n'
+      + '**Comment lancer :**\n'
+      + '1. Clique sur le **+** (ou icône apps) dans un salon vocal ou texte\n'
+      + '2. Choisis **HugoTaSlot** / **Bot enplein** dans la liste Activities\n'
+      + '3. L’Activity s’ouvre → ta présence affiche les images\n\n'
+      + '*(Les bots seuls ne peuvent pas afficher les images — seuls les joueurs dans l’Activity le peuvent.)*',
+    )
+    .setURL(`${config.site.url}/discord-activity/`)
+    .setFooter({ text: 'Developer Portal → Activities activées + URL mapping requis' });
+  return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }

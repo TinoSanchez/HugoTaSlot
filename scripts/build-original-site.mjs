@@ -6,6 +6,7 @@ import { optimizeCatalogArray } from "./lib/optimize-catalog-json.mjs";
 const root = process.cwd();
 
 execSync("node scripts/build-boot-bundle.mjs", { cwd: root, stdio: "inherit" });
+execSync("node scripts/build-discord-activity.mjs", { cwd: root, stdio: "inherit" });
 const outDir = resolve(root, "web", "dist");
 
 // Version de cache service worker : calculée une fois pour le build
