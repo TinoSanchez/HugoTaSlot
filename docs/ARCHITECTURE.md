@@ -109,6 +109,22 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (P7 — cloud hunts boot)
+
+`scripts/pages/cloud-hunts.js` (~600 lignes), chargé **après** `auth-cloud.js` et **avant** `app.js` :
+
+| Module | Rôle |
+|--------|------|
+| `huntFromCloudRow` / `cloudLoadHunts` | Lecture hunts Supabase |
+| `mergeCloudHuntsPreservingLocalWins` | Fusion gains locaux vs cloud |
+| `cloudReplaceAllHunts` + fallback | RPC `replace_user_hunts` |
+| `scheduleCloudSync` / `runCloudSync` | Sync différée avec retry |
+| `load` / `loadLocal` / `save` / `writeLocalCache` | Persistance locale + déclenchement sync |
+| `cloudCall` + circuit breaker | Résilience réseau (buckets auth/profile/admin/sync) |
+| Undo/redo + auto-snapshots hunts | Historique local |
+
+---
+
 ## Prod avancée (P6 — auth cloud boot)
 
 `scripts/pages/auth-cloud.js` (~2400 lignes) chargé **avant** `app.js` dans `index.html` :
