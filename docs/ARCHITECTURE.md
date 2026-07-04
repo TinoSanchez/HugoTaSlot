@@ -109,6 +109,31 @@ Variables utiles : `HUB88_PROBE_MAX`, `GAMDOM_OG_MAX`, `SKIP_HUB88`, `SKIP_GAMDO
 
 ---
 
+## Prod avancée (post-P11 — bundle boot + E2E)
+
+### Boot bundle
+
+`scripts/build-boot-bundle.mjs` concatène (dans l'ordre) :
+
+`auth-cloud` → `cloud-hunts` → `core-ui` → **`ops-health`** → `catalog-url` → `hunt-templates` → `inapp-notifs` → `hunt-hooks` → `page-router`
+
+→ sortie `scripts/pages/boot-bundle.js`, référencé seul dans `index.html` (3 scripts boot au total avec `app.js` + `app-boot.js`).
+
+### E2E Playwright
+
+- `scripts/e2e/site-smoke.mjs` — scénarios routing / pages
+- `scripts/e2e/run-e2e.mjs` — lance `serve.js` + smoke
+- CI : `npx playwright install chromium` puis `npm run test:e2e`
+
+### P11
+
+| Fichier | Rôle |
+|---------|------|
+| `ops-health.js` | `supaHealth`, `runSupabaseHealthCheck` |
+| `admin.js` | + `getLocalAdminAuditLogs`, `pushLocalAdminAudit` |
+
+---
+
 ## Prod avancée (P10 — satellites boot)
 
 Modules chargés autour du noyau `app.js` (~480 lignes) :

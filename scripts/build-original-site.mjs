@@ -1,8 +1,11 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { execSync } from "node:child_process";
 import { optimizeCatalogArray } from "./lib/optimize-catalog-json.mjs";
 
 const root = process.cwd();
+
+execSync("node scripts/build-boot-bundle.mjs", { cwd: root, stdio: "inherit" });
 const outDir = resolve(root, "web", "dist");
 
 // Version de cache service worker : calculée une fois pour le build

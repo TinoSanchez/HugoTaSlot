@@ -1082,3 +1082,25 @@ async function renderAdminPanel() {
   if (typeof syncAdminSlotPreview === 'function') syncAdminSlotPreview();
 }
 
+const ADMIN_AUDIT_LOCAL_KEY = 'hm_admin_audit_local_v1';
+
+function getLocalAdminAuditLogs() {
+  try {
+    const raw = localStorage.getItem(ADMIN_AUDIT_LOCAL_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+
+function pushLocalAdminAudit(action, details = '') {
+  try {
+    const logs = getLocalAdminAuditLogs();
+    logs.unshift({
+      ts: Date.now(),
+      admin: currentUser?.username || 'admin',
+      action: String(action || 'action').slice(0, 80),
+      details: String(details || '').slice(0, 240)
+    });
+    localStorage.setItem(ADMIN_AUDIT_LOCAL_KEY, JSON.stringify(logs.slice(0, 120)));
+  } catch (_) {}
+}

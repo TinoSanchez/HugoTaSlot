@@ -11,7 +11,7 @@ const BH_DEBUG = (() => {
   } catch (_) { return false; }
 })();
 function bhWarn(...args) {
-  if (BH_DEBUG) bhWarn(...args);
+  if (BH_DEBUG) console.warn('[BH]', ...args);
 }
 
 // [catalog-url] DEFAULT_SLOT_DEVISE / normalizeCatalogEntry
@@ -309,90 +309,19 @@ async function fetchJSONWithRetry(url, { retries = 2, timeoutMs = 9000 } = {}) {
 }
 
 const RUNTIME_LOG_KEY = 'hm_runtime_logs_v1';
-const ADMIN_AUDIT_LOCAL_KEY = 'hm_admin_audit_local_v1';
 const AUTO_SNAPSHOT_KEY = 'hm_auto_snapshots_v1';
 const OPS_ALERTS_KEY = 'hm_ops_alerts_v1';
 // [hunt-templates] HUNT_TEMPLATES_KEY → hunt-templates.js
 const GAME_HISTORY_KEY = 'hm_game_history_v1';
 const PLAYER_STATS_KEY = 'hm_player_stats_v1';
-let supaHealth = {
-  checkedAt: 0,
-  client: 'unknown',
-  auth: 'unknown',
-  db: 'unknown',
-  realtime: 'unknown',
-  latencyMs: null,
-  note: ''
-};
+// [ops-health] supaHealth / runSupabaseHealthCheck → ops-health.js
 // lastOpsAlertAt → core-ui.js
 // [cloud-hunts] undo stacks
 
 // [hunt-templates] getHuntTemplates / meta / presets
 // [core-ui] maintenance / requireWriteAccess / runtime logs
-
-async function runSupabaseHealthCheck(forceToast = false) {
-  const started = Date.now();
-  supaHealth = {
-    checkedAt: Date.now(),
-    client: 'down',
-    auth: 'unknown',
-    db: 'unknown',
-    realtime: onlineChannel ? 'up' : 'down',
-    latencyMs: null,
-    note: ''
-  };
-  try {
-    const c = getAuthClient();
-    if (!c) {
-      supaHealth.note = 'Client Supabase indisponible';
-      renderUpdatesPage();
-      if (forceToast) showToast('Health check: client Supabase indisponible', 'error');
-      return;
-    }
-    supaHealth.client = 'up';
-    const { data, error } = await withTimeout(() => c.auth.getSession(), 8000);
-    if (error) throw error;
-    supaHealth.auth = data?.session ? 'up' : 'no-session';
-    if (currentUser?.cloud && currentUser?.id) {
-      const { error: dbErr } = await withTimeout(
-        () => c.from('profiles').select('id').eq('id', currentUser.id).single(),
-        8000
-      );
-      supaHealth.db = dbErr ? 'degraded' : 'up';
-      if (dbErr) supaHealth.note = String(dbErr.message || 'db error').slice(0, 120);
-    } else {
-      supaHealth.db = 'auth-required';
-    }
-    supaHealth.latencyMs = Date.now() - started;
-  } catch (e) {
-    supaHealth.auth = 'down';
-    supaHealth.db = 'unknown';
-    supaHealth.note = String(e?.message || e || 'health check error').slice(0, 120);
-    pushRuntimeLog('error', `health_check: ${supaHealth.note}`);
-  }
-  supaHealth.realtime = onlineChannel ? 'up' : 'down';
-  renderUpdatesPage();
-  if (forceToast) showToast('Health check mis à jour', 'info', 1400);
-}
-function getLocalAdminAuditLogs() {
-  try {
-    const raw = localStorage.getItem(ADMIN_AUDIT_LOCAL_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch (_) { return []; }
-}
-function pushLocalAdminAudit(action, details = '') {
-  try {
-    const logs = getLocalAdminAuditLogs();
-    logs.unshift({
-      ts: Date.now(),
-      admin: currentUser?.username || 'admin',
-      action: String(action || 'action').slice(0, 80),
-      details: String(details || '').slice(0, 240)
-    });
-    localStorage.setItem(ADMIN_AUDIT_LOCAL_KEY, JSON.stringify(logs.slice(0, 120)));
-  } catch (_) {}
-}
+// [ops-health] runSupabaseHealthCheck → ops-health.js
+// [admin] getLocalAdminAuditLogs / pushLocalAdminAudit → admin.js
 
 /** Charge jeux-embed.js une seule fois (secours file:// ou si jeux.json absent). */
 // [catalog-slots] loadSlots / updateCatalogModeHint

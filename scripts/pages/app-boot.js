@@ -101,17 +101,17 @@ function registerAppServiceWorker() {
 
 window.addEventListener('DOMContentLoaded', () => {
   registerAppServiceWorker();
-  startCatalogAutoRefresh();
+  if (typeof startCatalogAutoRefresh === 'function') startCatalogAutoRefresh();
   initSidebarNavA11y();
   initHuntHubTabs();
   initModalA11yObserver();
-  updateCatalogModeHint();
+  if (typeof updateCatalogModeHint === 'function') updateCatalogModeHint();
   window.addEventListener('message', (ev) => {
     if (!ev?.data || ev.data.type !== 'hm-streamer-hud-close') return;
     setStreamerOverlayEnabled(false);
     const t = document.getElementById('opener-streamer-toggle');
     if (t) t.checked = false;
-    closeStreamerHudWin();
+    if (typeof closeStreamerHudWin === 'function') closeStreamerHudWin();
   });
   if (!window.__hmPersistBalanceBound) {
     window.__hmPersistBalanceBound = true;

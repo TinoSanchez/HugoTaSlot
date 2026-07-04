@@ -35,3 +35,9 @@ jobs:
         env:
           # 248 sr_* connus (hors Gamdom) — plafond pour détecter une régression massive
           CATALOG_MAX_PLACEHOLDERS: '500'
+
+      - name: Installer Chromium (Playwright)
+        run: npx playwright install chromium
+
+      - name: Tests E2E smoke (routing + pages)
+        run: npm run test:e2e

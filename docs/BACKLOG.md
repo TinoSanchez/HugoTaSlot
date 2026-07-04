@@ -17,6 +17,8 @@ Référence rapide après la passe P0 → P3 + Passe 1 du refactoring multi-page
 | **P8** | Core UI boot (`core-ui.js`) — SFX, toasts, confirm, maintenance, runtime logs, a11y nav/modales, recherche globale ; `app.js` ~2400 lignes |
 | **P9** | Routing boot (`page-router.js`) — URLs, `switchPage`, templates HTML, lazy loader, `initV101` ; `app.js` ~1600 lignes |
 | **P10** | Satellites boot — `catalog-url`, `hunt-templates`, `inapp-notifs`, `hunt-hooks`, `app-boot` ; `renderHomeHubMetrics` → hub-features ; `app.js` ~480 lignes (noyau) |
+| **P11** | `ops-health.js` (health Supabase) ; audit admin local → `admin.js` ; fix `bhWarn` |
+| **Post-refactor** | `boot-bundle.js` (9 modules → 1 requête HTTP) ; tests E2E Playwright (`npm run test:e2e`) ; CI |
 | **Multi-pages Passe 1** | URLs distinctes par onglet (History API) ; lazy `jeux.json` ; infra `LAZY_PAGE_SCRIPTS` |
 
 ## En cours / récurrent
@@ -33,7 +35,7 @@ Pipeline pour que les utilisateurs voient les nouvelles sorties très vite :
 1. **CI GitHub Actions** — `sync-jeux-daily.yml` tourne **toutes les 3 h** (8×/jour). Sync slot.report → enrich Hub88/Gamdom → enrich Stake → purge orphelins → commit `jeux.json`.
 2. **Vercel auto-deploy** — chaque commit sur `main` redéploie le site (intégration Git).
 3. **Cache HTTP `jeux.json`** — `max-age=300, stale-while-revalidate=3600` (5 min frais / 1 h stale). Le navigateur revalide avec `If-Modified-Since` (réponse 304 si pas changé, coût ~50 octets).
-4. **Polling client** — `app.js` refetch silencieusement `jeux.json` toutes les **30 min** + au retour de focus (onglet réactivé). Si le catalogue a changé, le state et la grille sont mis à jour sans recharger la page.
+4. **Polling client** — `catalog-slots.js` refetch silencieusement `jeux.json` toutes les **30 min** + au retour de focus (via `startCatalogAutoRefresh` dans `app-boot.js`).
 
 **Délai max** entre publication d'un jeu et apparition côté utilisateur : **~3 h + 5 min** (cron + cache).
 
@@ -77,13 +79,37 @@ STAKE_SKIP_BROWSER=1 npm run enrich:stake-placeholders
 
 **Limites mesurées (2026-06)** : Stake renvoie max ~4000 jeux par groupe (`numberLessEqual`). Le multi-sort + ciblage par provider augmente la couverture. Sur 248 placeholders catalogue, ~37 ont été récupérés via Stake (jeux populaires absents de Gamdom mais présents sur Stake). Les restants ne sont ni sur Gamdom ni sur Stake.
 
-## Refactoring multi-pages — état & suite
+## Refactoring multi-pages — **terminé** (P4–P11, 07/2026)
+
+Le site se comporte comme un **vrai site multi-pages** côté UX, tout en restant une SPA (état Supabase / solde / partie en cours conservés).
+
+### Boot prod (`index.html`)
+
+```
+boot-bundle.js  →  app.js (~400 lignes)  →  app-boot.js
+```
+
+`boot-bundle.js` est **généré** par `npm run build:boot` / `npm run build` à partir de 9 sources dans `scripts/pages/` (auth, cloud, core-ui, ops-health, catalog-url, hunt-templates, inapp-notifs, hunt-hooks, page-router).
+
+### Lazy pages
+
+**Extraits** (`scripts/pages/`) : pages lazy (`blackjack`, `mise`, `tournoi`, …) + chaîne hunt (`hunt-export` → … → `hunt-share`).
+
+**Noyau `app.js`** : `state`, devises/fmt, dédup bonus, `scheduleHuntUI`, `init()`, `fetchJSONWithRetry`.
+
+### Tests
+
+| Commande | Rôle |
+|----------|------|
+| `npm test` | Smoke catalogue + build dist |
+| `npm run test:e2e` | Playwright : accueil, `/blackjack`, `/hunt`, sidebar → mini-jeux, `/updates` |
+
+### Ancienne section Passe 2 (archive)
+
+<details>
+<summary>Passe 1–2 — historique extraction</summary>
 
 ### Passe 1 (terminée, 05/06/2026)
-
-Le site se comporte déjà comme un **vrai site multi-pages** côté UX, tout en restant techniquement une SPA (état Supabase / solde / partie en cours conservés entre pages).
-
-**Livré** :
 - **URLs distinctes** par onglet sidebar via History API. Slugs propres :
   - `/` accueil, `/hunt`, `/blackjack`, `/mise-optimale`, `/roue-depot`, `/studio`,
   - `/tournoi`, `/stats`, `/mini-jeux`, `/updates`, `/actualites`, `/review`, `/admin`
@@ -118,7 +144,9 @@ But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. M�
 2. Décommenter la ligne correspondante dans `LAZY_PAGE_SCRIPTS`.
 3. Smoke test : `npm test` puis test manuel de la page.
 
-**Gain estimé** une fois toutes les pages extraites : `app.js` passe de **~11 000 lignes** à **~3-4 000 lignes** chargées au boot. Les ~7 000 lignes restantes ne sont chargées que pour les pages effectivement consultées.
+**Gain obtenu** : `app.js` **~11 000 → ~400 lignes** (noyau) ; modules boot concaténés ; ~7 000 lignes lazy par page.
+
+</details>
 
 ## Optionnel (non engagé)
 
@@ -131,7 +159,9 @@ But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. M�
 
 ```bash
 npm start                  # site prod en local (racine)
-npm test                   # smoke catalogue + cloud-core + build
+npm test                   # smoke catalogue + build
+npm run test:e2e           # E2E Playwright (serve local + routing)
+npm run build:boot         # regénérer boot-bundle.js seul
 npm run verify:supabase    # migrations RPC/colonnes en prod
 npm run catalog:stats      # compteurs placeholders
 npm run catalog:strip-placeholders

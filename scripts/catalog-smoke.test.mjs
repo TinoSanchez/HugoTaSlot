@@ -111,6 +111,12 @@ describe('fichiers site production', () => {
     const distIndex = resolve(ROOT, 'web', 'dist', 'index.html');
     const distJeux = resolve(ROOT, 'web', 'dist', 'jeux.json');
     assert.ok(existsSync(distIndex), 'web/dist/index.html absent après build');
+    const distHtml = readFileSync(distIndex, 'utf8');
+    assert.ok(distHtml.includes('boot-bundle.js'), 'index dist doit référencer boot-bundle.js');
+    assert.ok(
+      existsSync(resolve(ROOT, 'web', 'dist', 'scripts', 'pages', 'boot-bundle.js')),
+      'web/dist/scripts/pages/boot-bundle.js absent'
+    );
     assert.ok(existsSync(distJeux), 'web/dist/jeux.json absent après build');
     assert.ok(existsSync(resolve(ROOT, 'web', 'dist', 'sw.js')), 'web/dist/sw.js absent');
     assert.ok(
