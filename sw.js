@@ -46,17 +46,32 @@ self.addEventListener('fetch', (event) => {
   if (shouldBypassCache(url)) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((res) => {
-        if (!res || res.status !== 200 || res.type === 'opaque') return res;
-        if (!isCacheableAsset(url.pathname) && url.pathname !== '/' && !url.pathname.endsWith('.html')) {
+    (async () => {
+      const networkFirst = url.pathname.endsWith('/app.js') || url.pathname.endsWith('/index.html');
+      if (networkFirst) {
+        try {
+          const res = await fetch(event.request);
+          if (res && res.status === 200 && res.type !== 'opaque') {
+            const clone = res.clone();
+            caches.open(CACHE).then((cache) => cache.put(event.request, clone)).catch(() => {});
+          }
           return res;
+        } catch (_) {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          throw _;
         }
-        const clone = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, clone)).catch(() => {});
+      }
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+      const res = await fetch(event.request);
+      if (!res || res.status !== 200 || res.type === 'opaque') return res;
+      if (!isCacheableAsset(url.pathname) && url.pathname !== '/' && !url.pathname.endsWith('.html')) {
         return res;
-      });
-    })
+      }
+      const clone = res.clone();
+      caches.open(CACHE).then((cache) => cache.put(event.request, clone)).catch(() => {});
+      return res;
+    })()
   );
 });

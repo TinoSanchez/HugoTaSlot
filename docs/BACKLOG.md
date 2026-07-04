@@ -78,9 +78,9 @@ Le site se comporte déjà comme un **vrai site multi-pages** côté UX, tout en
 
 **Livré** :
 - **URLs distinctes** par onglet sidebar via History API. Slugs propres :
-  - `/` accueil, `/hunt`, `/blackjack`, `/mise-optimale`, `/roue-depot`, `/pharaon`,
+  - `/` accueil, `/hunt`, `/blackjack`, `/mise-optimale`, `/roue-depot`, `/studio`,
   - `/tournoi`, `/stats`, `/mini-jeux`, `/updates`, `/actualites`, `/review`, `/admin`
-- **Back / forward** navigateur, **refresh** sur n'importe quelle URL, **partage de lien** direct (`/blackjack`, `/pharaon`…) — tout marche grâce à `vercel.json` qui rewrite déjà `/(.*)` → `index.html`.
+- **Back / forward** navigateur, **refresh** sur n'importe quelle URL, **partage de lien** direct (`/blackjack`, `/hunt`…) — tout marche grâce à `vercel.json` qui rewrite déjà `/(.*)` → `index.html`.
 - **`<title>` mis à jour** par page (SEO + onglet navigateur).
 - **Lazy `jeux.json`** : le catalogue (~1.9 Mo) n'est **plus chargé au boot**. Il l'est uniquement quand l'utilisateur entre sur `/hunt`. `refreshCatalogSilently()` respecte ce lazy (ne pre-fetch pas si jamais consulté).
 - **Infrastructure `LAZY_PAGE_SCRIPTS`** prête : ajouter une entrée dans le registre suffira à charger un script de page à la demande, sans toucher au code de `switchPage()`.
@@ -93,20 +93,19 @@ Le site se comporte déjà comme un **vrai site multi-pages** côté UX, tout en
 - `window.popstate` : back/forward → re-mount sans pousser l'historique
 - Routing initial dans `initV101()` au lieu du `switchPage('home')` codé en dur
 
-### Passe 2 (à venir — extraction des chunks lazy)
+### Passe 2 (en cours — extraction lazy)
 
 But : que `app.js` ne charge plus tout le code de toutes les pages d'un coup. Méthode = extraire les fonctions par page dans des fichiers séparés et les charger via `LAZY_PAGE_SCRIPTS`.
 
-Ordre suggéré (du plus indépendant au plus intriqué) :
+**Déjà extrait** (`scripts/pages/`) : `blackjack`, `mise`, `tournoi`, `roue-depot`, `slot-choix`, `mini-jeux`, `hub-features` (accueil + studio, lazy), `stats` (UI lazy).
 
-1. **`pharaon`** (~1000 lignes) — `initPharaohSlot` + toutes les fonctions `pharaoh*`
-2. **`roue_depot`** (~380 lignes) — `initDepositWheel` + helpers
-3. **`mini-jeux`** (~2100 lignes) — lobby + 12 mini-jeux (`launchGame`, `closeGame`, `playGame`, etc.)
-4. **`blackjack`** (~22 lignes) — `renderBJTable` (trivial)
-5. **`mise`** (~250 lignes) — `calcMise`
-6. **`tournoi`** (~300 lignes) — `renderTournoiLeaderboard`
-7. **`admin`** (~600 lignes) — `renderAdminPanel`
-8. **`stats`** / **`news`** / **`updates`** / **`review`** / **`home`** — petites pages restantes
+**Reste dans `app.js`** (prochaines cibles) : `admin`, `news`, `updates`, `review`, cœur hunt/auth/cloud.
+
+Ordre suggéré pour la suite :
+
+1. **`admin`** (~600 lignes) — `renderAdminPanel` + actions admin async
+2. **`news`** / **`updates`** / **`review`** — pages contenu + ops
+3. **Cœur hunt** — extraction plus risquée (état partagé)
 
 **Pattern à appliquer** pour chaque extraction (3 étapes) :
 1. Couper le bloc de fonctions de `app.js` → `./scripts/pages/<slug>.js` (les fonctions restent globales, pas de module ES — migration progressive sans réécrire les références).
@@ -119,14 +118,15 @@ Ordre suggéré (du plus indépendant au plus intriqué) :
 
 | Sujet | Notes |
 |--------|--------|
-| Fusion / archivage `web/` | Décision produit |
+| Fusion / archivage `web/` | Prototype Vite documenté dans `web/README.md` + `docs/ARCHITECTURE.md` — **ne pas confondre avec prod** |
 | Tournoi / export PDF / etc. | Idées produit, hors maintenance technique |
 
 ## Commandes utiles
 
 ```bash
 npm start                  # site prod en local (racine)
-npm test                   # smoke catalogue + build
+npm test                   # smoke catalogue + cloud-core + build
+npm run verify:supabase    # migrations RPC/colonnes en prod
 npm run catalog:stats      # compteurs placeholders
 npm run catalog:strip-placeholders
 npm run enrich:images:full

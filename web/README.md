@@ -6,7 +6,7 @@ Le site public est construit depuis la **racine** du repo :
 
 - `index.html`, `styles.css`, `app.js` → `npm run build` → `web/dist/`
 
-Pour le détail complet : **[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)**
+Pour le détail complet : **[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)** · **[PROTOTYPE.md](./PROTOTYPE.md)**
 
 ## Commandes (prototype uniquement)
 

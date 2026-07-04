@@ -1,10 +1,11 @@
 {
   "name": "site-bh-1.02",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "HugoTaSlot Bonus Hunt — site prod à la racine (index.html, styles.css, app.js) ; web/ = prototype Vite hors prod.",
   "scripts": {
     "start": "node serve.js",
-    "test": "node --test scripts/catalog-smoke.test.mjs scripts/stake-match.test.mjs",
+    "test": "node --test scripts/catalog-smoke.test.mjs scripts/stake-match.test.mjs scripts/cloud-core.test.mjs",
+    "verify:supabase": "node scripts/verify-supabase-migrations.mjs",
     "dev": "vite web",
     "dev:site": "node serve.js",
     "build": "node scripts/build-original-site.mjs",

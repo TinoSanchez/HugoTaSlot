@@ -38,6 +38,13 @@ export const commandDefs = [
     .setName('leaderboard')
     .setDescription('Top des derniers hunts terminés (par profit).'),
   new SlashCommandBuilder()
+    .setName('live')
+    .setDescription('Ouvre un hunt public partagé (lien live HugoTaSlot /h/…).')
+    .addStringOption((o) => o
+      .setName('slug')
+      .setDescription('Slug du lien public (ex. abc123def4 depuis /h/…)')
+      .setRequired(true)),
+  new SlashCommandBuilder()
     .setName('slot')
     .setDescription('Tire une slot au hasard depuis le catalogue du site (jeux.json).'),
   new SlashCommandBuilder()
@@ -73,6 +80,7 @@ export async function registerInteractionHandlers(client) {
         case 'unlink': return cmdUnlink(interaction);
         case 'hunts': return cmdHunts(interaction);
         case 'leaderboard': return cmdLeaderboard(interaction);
+        case 'live': return cmdLive(interaction);
         case 'slot': return cmdRandomSlot(interaction);
         case 'call': return cmdCall(interaction);
         default: return interaction.reply({ content: 'Commande inconnue.', flags: MessageFlags.Ephemeral });
@@ -184,7 +192,7 @@ async function cmdLink(interaction) {
     log.warn({ err: updErr }, 'discord_links update failed');
     return interaction.editReply({ content: 'Liaison impossible (base de données).' });
   }
-  return interaction.editReply({ content: '✅ Compte lié avec succès. Tu peux utiliser /hunts maintenant.' });
+  return interaction.editReply({ content: '✅ Compte lié avec succès. Tu peux utiliser `/hunts`, `/leaderboard` et `/live slug`.' });
 }
 
 /* ─── /unlink ────────────────────────────────────────────────────────── */
@@ -395,5 +403,49 @@ async function cmdLeaderboard(interaction) {
       return `**${i + 1}. ${r.name}** · solde ${r.start.toFixed(2).replace('.', ',')}${r.currency} · profit **${sign}${r.profit.toFixed(2).replace('.', ',')}${r.currency}**${who}`;
     }).join('\n'))
     .setFooter({ text: 'Calculé sur les 40 hunts les plus récents.' });
+  return interaction.editReply({ embeds: [embed] });
+}
+
+/* ─── /live slug ─────────────────────────────────────────────────────── */
+async function cmdLive(interaction) {
+  await interaction.deferReply();
+  const slug = String(interaction.options.getString('slug', true) || '').trim().toLowerCase();
+  if (!slug || !/^[a-z0-9-]{4,32}$/.test(slug)) {
+    return interaction.editReply({ content: 'Slug invalide. Copie la partie après `/h/` dans le lien live du site.' });
+  }
+  const { data, error } = await supabase.rpc('get_public_hunt_share', { p_slug: slug });
+  if (error) {
+    log.warn({ err: error, slug }, 'get_public_hunt_share failed');
+    return interaction.editReply({ content: 'Impossible de charger ce hunt live.' });
+  }
+  if (!data) {
+    return interaction.editReply({ content: 'Hunt live introuvable ou désactivé. Vérifie le slug (partie après `/h/` sur le site).' });
+  }
+  const payload = data.payload || {};
+  const hunt = payload.hunt || {};
+  const stats = payload.stats || {};
+  const liveUrl = `${config.site.url}/h/${slug}`;
+  const profit = Number(stats.profit || 0);
+  const sign = profit >= 0 ? '+' : '';
+  const cur = String(stats.currency || hunt.currency || 'EUR').toUpperCase();
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle(hunt.name || 'Bonus Hunt live')
+    .setURL(liveUrl)
+    .setDescription(`Suivi en direct — [ouvrir le live](${liveUrl})`)
+    .setTimestamp(new Date(data.updated_at || Date.now()));
+  embed.addFields(
+    { name: 'Solde départ', value: `${Number(stats.startBalance || hunt.startBalance || 0).toFixed(2).replace('.', ',')} ${cur}`, inline: true },
+    { name: 'Bonus', value: `${Number(stats.openedCount || 0)}/${Number(stats.bonusCount || 0)} ouverts`, inline: true },
+    { name: 'Profit', value: `**${sign}${profit.toFixed(2).replace('.', ',')} ${cur}**`, inline: true },
+  );
+  if (stats.beAvg != null && Number(stats.beAvg) > 0) {
+    embed.addFields({ name: 'BE moyen', value: `×${Number(stats.beAvg).toFixed(2)}`, inline: true });
+  }
+  const bonuses = Array.isArray(hunt.bonuses) ? hunt.bonuses : [];
+  const lastOpen = [...bonuses].reverse().find((b) => b.win != null && b.win !== '');
+  const thumb = lastOpen?.slotImage || bonuses[bonuses.length - 1]?.slotImage;
+  if (thumb) embed.setThumbnail(String(thumb));
+  embed.setFooter({ text: 'HugoTaSlot · hunt public partagé' });
   return interaction.editReply({ embeds: [embed] });
 }

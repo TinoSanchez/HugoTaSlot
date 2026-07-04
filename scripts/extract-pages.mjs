@@ -59,10 +59,7 @@ const L = {
   JEUX_P1_END:   findLine('// ROUE DU DEPOT') - 2,
 
   ROUE_START:  findLine('// ROUE DU DEPOT'),
-  ROUE_END:    findLine('// ——— LE PHARAON') - 2,
-
-  PHARAON_START: findLine('// ——— LE PHARAON'),
-  PHARAON_END:   findLine('// DICE') - 2,
+  ROUE_END:    findLine('// DICE') - 2,
 
   JEUX_P2_START: findLine('// DICE'),
   // Le bloc stats commence après : on cherche la ligne qui définit RANK_FAMILIES
@@ -105,12 +102,6 @@ const EXTRACTIONS = [
     label: 'Roue du Dépôt',
     ranges: [[L.ROUE_START, L.ROUE_END]],
     placeholder: '// [roue_depot] — extrait dans scripts/pages/roue-depot.js (LAZY_PAGE_SCRIPTS)',
-  },
-  {
-    file: 'pharaon.js',
-    label: 'Le Pharaon (slot démo)',
-    ranges: [[L.PHARAON_START, L.PHARAON_END]],
-    placeholder: '// [pharaoh_slot] — extrait dans scripts/pages/pharaon.js (LAZY_PAGE_SCRIPTS)',
   },
   {
     file: 'mini-jeux.js',

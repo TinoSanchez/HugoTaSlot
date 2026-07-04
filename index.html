@@ -29,13 +29,29 @@
     <meta name="twitter:image" content="https://hugotaslot.fr/assets/logo-hugotaslot.jpg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Cinzel:wght@500;600;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles-blackjack.css">
+    <link rel="stylesheet" href="./styles-hub.css">
 
 <!-- jeux-embed.js (~2 Mo) : chargé à la demande si jeux.json est indisponible (file://, hors-ligne) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+
+<a class="skip-link" href="#content">Aller au contenu principal</a>
+
+<div id="pwa-install-banner" class="pwa-install-banner hidden" role="region" aria-label="Installer l’application">
+  <div class="pwa-install-inner">
+    <img src="./assets/logo-hugotaslot.jpg" class="pwa-install-icon" alt="" width="40" height="40">
+    <div class="pwa-install-text">
+      <div class="pwa-install-title">Installer HugoTaSlot</div>
+      <div class="pwa-install-sub">Accès rapide, plein écran, comme une app.</div>
+    </div>
+    <button type="button" class="profile-mini-btn primary pwa-install-btn" id="pwa-install-btn">Installer</button>
+    <button type="button" class="pwa-install-dismiss" id="pwa-install-dismiss" aria-label="Masquer">✕</button>
+  </div>
+</div>
 
 <div id="sidebar-backdrop" class="sidebar-backdrop" hidden aria-hidden="true"></div>
 <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-expanded="false" aria-controls="sidebar" aria-label="Ouvrir le menu de navigation">
@@ -71,6 +87,9 @@
       <button type="button" class="sidebar-tab" data-page="hunt">
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-hunt.svg" alt="" aria-hidden="true">BONUS HUNT
       </button>
+      <button type="button" class="sidebar-tab" data-page="studio">
+        <img class="sidebar-tab-icon-logo section" src="./assets/icon-hunt.svg" alt="" aria-hidden="true">STUDIO
+      </button>
       <button type="button" class="sidebar-tab" data-page="blackjack">
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-cards.svg" alt="" aria-hidden="true">TABLEAU BJ
       </button>
@@ -90,7 +109,7 @@
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-game-roulette.svg" alt="" aria-hidden="true">ROUE ÉQUIPES
       </button>
       <button type="button" class="sidebar-tab" data-page="updates">
-        <img class="sidebar-tab-icon-logo section" src="./assets/icon-updates.svg" alt="" aria-hidden="true">UPDATES
+        <img class="sidebar-tab-icon-logo section" src="./assets/icon-updates.svg" alt="" aria-hidden="true">NOUVEAUTÉS
       </button>
       <button type="button" class="sidebar-tab" data-page="news">
         <img class="sidebar-tab-icon-logo section" src="./assets/icon-news.svg" alt="" aria-hidden="true">ACTUALITÉS
@@ -110,7 +129,7 @@
     <!-- BONUS HUNT HUB — tout le hunt sur une seule page -->
     <div id="hunt-hub" class="hunt-hub" style="display:none;" aria-label="Zone Bonus Hunt">
 
-      <aside class="hunt-hub-sessions" aria-label="Sessions Bonus Hunt">
+      <aside class="hunt-hub-sessions" id="hunt-hub-sessions" aria-label="Sessions Bonus Hunt">
         <button class="sidebar-btn hunt-hub-new-btn" id="btn-new-hunt" type="button">+ NOUVEAU HUNT</button>
         <div class="hunt-hub-sessions-title">// SESSIONS</div>
         <div class="hunt-hub-sessions-filter">
@@ -130,44 +149,40 @@
         <div class="hunt-title-main" id="current-hunt-name">— SÉLECTIONNER UN HUNT —</div>
         <div class="hunt-title-sub" id="current-hunt-date"></div>
                 </div>
-      <div class="stats-bar" id="stats-bar">
-        <div class="stat-card">
-          <div class="stat-label">BONUS</div>
-          <div class="stat-value" id="stat-count">0</div>
-            </div>
-        <div class="stat-card">
-          <div class="stat-label">SOLDE DE DÉPART</div>
-          <div class="stat-value gold" id="stat-total-money">0.00€</div>
-        </div>
-        <div class="stat-card stat-card--profit">
+      <button type="button" class="hunt-sessions-toggle" id="btn-hunt-sessions-toggle" aria-expanded="false" aria-controls="hunt-hub-sessions">Sessions</button>
+      <div class="stats-bar stats-bar--compact" id="stats-bar">
+        <div class="stat-card stat-card--hero stat-card--profit">
           <div class="stat-label">PROFIT</div>
           <div class="stat-value" id="stat-profit">—</div>
           <div class="stat-subhint" id="stat-profit-hint">Ajoute des bonus pour lancer le hunt.</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">GAINS CUMULÉS</div>
-          <div class="stat-value gold" id="stat-total-win">0.00€</div>
+        <div class="stat-card stat-card--bonus">
+          <div class="stat-label">BONUS</div>
+          <div class="stat-value" id="stat-count">0</div>
+          <div class="stat-subhint" id="stat-bonus-sub">0 ouverts</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card--be">
           <div class="stat-label">BE MOYEN</div>
-          <div class="stat-value" id="stat-be-avg">—</div>
+          <div class="stat-value gold" id="stat-be-avg">—</div>
         </div>
+        <span id="stat-total-money" class="sr-only" aria-hidden="true">0</span>
+        <span id="stat-total-win" class="sr-only" aria-hidden="true">0</span>
       </div>
-      <button class="open-btn" id="btn-open-hunt-header" disabled style="display:none;"><span>▶ OUVRIR LE HUNT</span></button>
+      <button class="open-btn hunt-header-open-btn" id="btn-open-hunt-header" disabled type="button"><span>▶ OUVRIR</span></button>
         </header>
 
         <nav id="hunt-hub-tabs" class="hunt-hub-tabs" aria-label="Outils Bonus Hunt">
           <button type="button" class="hunt-hub-tab active" data-hunt-tab="workspace" aria-current="true">SESSION</button>
-          <button type="button" class="hunt-hub-tab" data-hunt-tab="mise">MISE OPTIMALE</button>
-          <button type="button" class="hunt-hub-tab" data-hunt-tab="depot">SLOT DÉPÔT</button>
-          <button type="button" class="hunt-hub-tab" data-hunt-tab="choix">SLOT CHOIX</button>
-          <button type="button" class="hunt-hub-tab" data-hunt-tab="tournoi">TOURNOI</button>
+          <button type="button" class="hunt-hub-tab hunt-hub-tab--extra" data-hunt-tab="mise">MISE OPTIMALE</button>
+          <button type="button" class="hunt-hub-tab hunt-hub-tab--extra" data-hunt-tab="depot">SLOT DÉPÔT</button>
+          <button type="button" class="hunt-hub-tab hunt-hub-tab--extra" data-hunt-tab="choix">SLOT CHOIX</button>
+          <button type="button" class="hunt-hub-tab hunt-hub-tab--extra" data-hunt-tab="tournoi">TOURNOI</button>
         </nav>
 
         <div class="hunt-hub-panels">
 
           <div id="hunt-tab-workspace" class="hunt-tab-panel active">
-    <div id="content">
+    <main id="content" tabindex="-1">
       <div id="no-hunt-selected" style="display:flex;flex:1;align-items:center;justify-content:center;">
         <div class="empty-state" style="opacity:0.4;">
           <div class="empty-icon"><img src="./assets/virtual-token.svg" class="ui-logo-icon big" alt="logo"></div>
@@ -175,66 +190,83 @@
             </div>
         </div>
 
-      <div id="hunt-workspace" class="hidden" style="display:flex;flex-direction:column;flex:1;overflow:hidden;gap:0;">
+      <div id="hunt-workspace" class="hidden hunt-workspace" data-mobile-view="bonus" style="display:flex;flex-direction:column;flex:1;overflow:hidden;gap:0;">
+
+        <nav class="hunt-mobile-view" id="hunt-mobile-view" aria-label="Vue mobile hunt">
+          <button type="button" class="hunt-mobile-view-btn active" data-hunt-view="bonus">Bonus</button>
+          <button type="button" class="hunt-mobile-view-btn" data-hunt-view="slots">Slots</button>
+        </nav>
 
         <!-- LAYOUT VERTICAL: bonus list puis machines dessous -->
         <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;gap:0;">
 
           <!-- TOP: BONUS LIST -->
-          <div id="bonus-panel" style="height:46%;min-height:280px;display:flex;flex-direction:column;border-bottom:1px solid var(--border);overflow:hidden;">
-            <div style="padding:12px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-              <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:13px;letter-spacing:2px;color:var(--gold);">MES BONUS <span id="tab-bonus-count" style="opacity:0.6;font-size:11px;">(0)</span></div>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <button class="modal-btn secondary" id="btn-export-hunt" style="height:30px;padding:0 10px;font-size:10px;">EXPORT</button>
-                <button class="modal-btn secondary" id="btn-import-hunt" style="height:30px;padding:0 10px;font-size:10px;">IMPORT</button>
-                <button class="modal-btn secondary" id="btn-share-hunt" style="height:30px;padding:0 10px;font-size:10px;">SHARE CODE</button>
-                <button class="modal-btn secondary" id="btn-import-share" style="height:30px;padding:0 10px;font-size:10px;">IMPORT SHARE</button>
-                <button class="modal-btn secondary" id="btn-save-template" style="height:30px;padding:0 10px;font-size:10px;">TEMPLATE</button>
-                <button class="modal-btn secondary" id="btn-undo-action" style="height:30px;padding:0 10px;font-size:10px;">UNDO</button>
-                <button class="modal-btn secondary" id="btn-redo-action" style="height:30px;padding:0 10px;font-size:10px;">REDO</button>
-                <button class="open-btn" id="btn-open-hunt" disabled style="height:36px;padding:0 16px;font-size:11px;"><span>▶ OUVRIR</span></button>
+          <div id="bonus-panel" class="hunt-bonus-panel">
+            <div class="hunt-bonus-toolbar">
+              <div class="hunt-bonus-toolbar-title">MES BONUS <span id="tab-bonus-count">(0)</span></div>
+              <div class="hunt-bonus-toolbar-actions">
+                <button class="open-btn hunt-open-btn-compact" id="btn-open-hunt" type="button" disabled><span>▶ OUVRIR</span></button>
+                <button class="modal-btn secondary hunt-live-btn" type="button" id="btn-live-hunt">LIVE</button>
+                <div class="hunt-more-wrap">
+                  <button class="modal-btn secondary hunt-more-toggle" type="button" id="btn-hunt-more-toggle" aria-expanded="false" aria-controls="hunt-toolbar-menu">⋯</button>
+                  <div class="hunt-toolbar-menu hidden" id="hunt-toolbar-menu" role="menu">
+                    <button type="button" class="hunt-menu-item" id="btn-stop-live-hunt" style="display:none;">Couper le live</button>
+                    <button type="button" class="hunt-menu-item" onclick="submitActiveHuntToTournoi()">Soumettre au tournoi</button>
+                    <button type="button" class="hunt-menu-item" id="btn-export-hunt-image">Export image PNG</button>
+                    <button type="button" class="hunt-menu-item" id="btn-export-hunt-pdf">Export PDF (imprimer)</button>
+                    <button type="button" class="hunt-menu-item" id="btn-export-hunt">Export JSON</button>
+                    <button type="button" class="hunt-menu-item" id="btn-import-hunt">Import JSON</button>
+                    <button type="button" class="hunt-menu-item" id="btn-share-hunt">Copier share code</button>
+                    <button type="button" class="hunt-menu-item" id="btn-import-share">Importer share code</button>
+                    <button type="button" class="hunt-menu-item" id="btn-save-template">Sauver template</button>
+                    <button type="button" class="hunt-menu-item" id="btn-undo-action">Annuler</button>
+                    <button type="button" class="hunt-menu-item" id="btn-redo-action">Rétablir</button>
+                  </div>
+                </div>
               </div>
             </div>
-            <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <select class="provider-filter" id="bonus-status-filter" style="height:30px;min-width:140px;">
-                <option value="all">Tous les bonus</option>
+            <div class="hunt-filters-compact">
+              <input class="provider-filter hunt-filter-search" id="bonus-search-filter" placeholder="Chercher un bonus…" autocomplete="off">
+              <select class="provider-filter" id="bonus-status-filter" title="Filtrer par statut">
+                <option value="all">Tous</option>
                 <option value="pending">À ouvrir</option>
                 <option value="opened">Ouverts</option>
-                <option value="positive">Gains positifs</option>
-                <option value="negative">Gains négatifs</option>
               </select>
-              <select class="provider-filter" id="bonus-type-filter" style="height:30px;min-width:140px;">
+              <select class="provider-filter" id="bonus-sort" title="Tri">
+                <option value="order">Ordre d'ajout</option>
+                <option value="win_desc">Gain ↓</option>
+                <option value="multi_desc">Multi ↓</option>
+                <option value="stake_desc">Mise ↓</option>
+              </select>
+              <button type="button" class="modal-btn secondary hunt-filters-toggle" id="btn-hunt-filters-toggle" aria-expanded="false" aria-controls="hunt-filters-advanced">+ Filtres</button>
+            </div>
+            <div class="hunt-filters-advanced hidden" id="hunt-filters-advanced">
+              <select class="provider-filter" id="bonus-type-filter">
                 <option value="all">Tous types</option>
                 <option value="normal">Normal</option>
                 <option value="bounty">Bounty</option>
                 <option value="epic">Epic Bonus</option>
               </select>
-              <select class="provider-filter" id="bonus-sort" style="height:30px;min-width:170px;">
-                <option value="order">Tri: ordre d'ajout</option>
-                <option value="stake_desc">Tri: mise décroissante</option>
-                <option value="stake_asc">Tri: mise croissante</option>
-                <option value="win_desc">Tri: gain décroissant</option>
-                <option value="win_asc">Tri: gain croissant</option>
-                <option value="multi_desc">Tri: multiplicateur décroissant</option>
-                <option value="multi_asc">Tri: multiplicateur croissant</option>
-                <option value="name_asc">Tri: nom A→Z</option>
+              <select class="provider-filter" id="bonus-win-filter" title="Filtre gains">
+                <option value="all">Tous gains</option>
+                <option value="positive">Gains positifs</option>
+                <option value="negative">Sans gain / bust</option>
               </select>
-              <input class="provider-filter" id="bonus-search-filter" style="height:30px;min-width:210px;padding:0 10px;" placeholder="Recherche bonus (slot/provider)...">
-              <select class="provider-filter" id="bonus-provider-filter" style="height:30px;min-width:170px;">
-                <option value="">Provider: tous</option>
+              <select class="provider-filter" id="bonus-provider-filter">
+                <option value="">Tous providers</option>
               </select>
-              <input class="provider-filter" id="bonus-min-stake" type="number" min="0" step="0.01" style="height:30px;min-width:120px;padding:0 10px;" placeholder="Mise min">
-              <input class="provider-filter" id="bonus-max-stake" type="number" min="0" step="0.01" style="height:30px;min-width:120px;padding:0 10px;" placeholder="Mise max">
-              <select class="provider-filter" id="bonus-filter-presets" style="height:30px;min-width:180px;">
-                <option value="">Preset filtre...</option>
+              <input class="provider-filter" id="bonus-min-stake" type="number" min="0" step="0.01" placeholder="Mise min">
+              <input class="provider-filter" id="bonus-max-stake" type="number" min="0" step="0.01" placeholder="Mise max">
+              <select class="provider-filter" id="bonus-filter-presets">
+                <option value="">Preset filtre…</option>
               </select>
-              <button class="modal-btn secondary" id="btn-save-filter-preset" style="height:30px;padding:0 10px;font-size:10px;">SAUVER FILTRE</button>
-              <button class="modal-btn secondary" id="btn-del-filter-preset" style="height:30px;padding:0 10px;font-size:10px;">SUPPR PRESET</button>
-              <button class="modal-btn secondary" id="btn-reset-filters" style="height:30px;padding:0 10px;font-size:10px;">RESET FILTRES</button>
-              <button class="modal-btn secondary" id="btn-bulk-clear-opened" style="height:30px;padding:0 10px;font-size:10px;">SUPPR OUVERTS</button>
-              <button class="modal-btn secondary" id="btn-bulk-reset-wins" style="height:30px;padding:0 10px;font-size:10px;">RESET GAINS</button>
-                    </div>
-            <div id="hunt-items-container" style="flex:1;overflow-y:auto;padding:8px;">
+              <button class="modal-btn secondary hunt-filter-mini" id="btn-save-filter-preset" type="button">Sauver preset</button>
+              <button class="modal-btn secondary hunt-filter-mini" id="btn-del-filter-preset" type="button">Suppr. preset</button>
+              <button class="modal-btn secondary hunt-filter-mini" id="btn-reset-filters" type="button">Reset</button>
+              <button class="modal-btn secondary hunt-filter-mini" id="btn-bulk-clear-opened" type="button">Suppr. ouverts</button>
+              <button class="modal-btn secondary hunt-filter-mini" id="btn-bulk-reset-wins" type="button">Reset gains</button>
+            </div>
+            <div id="hunt-items-container" class="hunt-items-container">
               <div id="bonus-list"></div>
               <div class="empty-state" id="bonus-list-empty">
                 <div class="empty-icon"><img src="./assets/virtual-token.svg" class="ui-logo-icon" alt="logo"></div>
@@ -244,23 +276,23 @@
                 </div>
 
           <!-- BOTTOM: SLOT GRID -->
-          <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px 16px;">
-            <div class="search-row" style="margin-bottom:12px;flex-shrink:0;">
+          <div class="hunt-catalog-panel">
+            <div class="search-row hunt-catalog-search">
               <div class="search-wrap">
                 <span class="search-icon"></span>
-                <input type="text" id="search-input" placeholder="Rechercher un slot..." autocomplete="off">
-                </div>
-              <select class="provider-filter" id="catalog-mode-filter" title="Mode catalogue">
-                <option value="gamdom">Catalogue: Gamdom pur</option>
-                <option value="extended">Catalogue: Étendu</option>
+                <input type="text" id="search-input" placeholder="Ajouter une slot…" autocomplete="off">
+              </div>
+              <select class="provider-filter" id="provider-filter" title="Provider">
+                <option value="">Tous providers</option>
               </select>
-              <select class="provider-filter" id="provider-filter">
-                <option value="">Tous les providers</option>
+              <select class="provider-filter hunt-catalog-mode" id="catalog-mode-filter" title="Mode catalogue">
+                <option value="gamdom">Gamdom</option>
+                <option value="extended">Étendu</option>
               </select>
               <span class="results-count" id="results-count">0 slots</span>
-                </div>
+            </div>
             <p class="catalog-mode-hint" id="catalog-mode-hint" role="status" aria-live="polite"></p>
-            <div id="grid-container" style="flex:1;overflow-y:auto;">
+            <div id="grid-container" class="hunt-grid-container">
               <div class="loader" id="grid-loader">
                 <div class="loader-spinner"></div>
                 <div class="loader-text" id="loader-text">CHARGEMENT DES SLOTS...</div>
@@ -472,7 +504,8 @@
                   <div class="mise-section-title" style="margin:0;">TOURNOI BONUS HUNT</div>
                   <div class="bj-rec" style="margin-top:6px;">Classement mensuel (Europe/Paris) &amp; soumission de hunts</div>
                 </div>
-                <button class="open-btn" type="button" onclick="showSubmitTournoi()"><span>+ SOUMETTRE MON HUNT</span></button>
+                <button class="open-btn" type="button" onclick="submitActiveHuntToTournoi()"><span>⚡ SOUMETTRE LE HUNT ACTIF</span></button>
+                <button class="open-btn" type="button" onclick="showSubmitTournoi()"><span>+ SOUMETTRE MANUELLEMENT</span></button>
               </div>
               <div class="mise-section">
                 <div class="mise-section-title" id="tournoi-podium-title">PODIUM DU MOIS PRÉCÉDENT</div>
@@ -550,9 +583,11 @@
         <label class="modal-label" for="new-hunt-casino">CASINO</label>
         <select class="modal-input" id="new-hunt-casino"></select>
       </div>
-      <div class="modal-field">
-        <label class="modal-label" for="new-hunt-template">TEMPLATE (optionnel)</label>
-        <select class="modal-input" id="new-hunt-template"></select>
+      <div class="modal-field hunt-template-field">
+        <label class="modal-label">TEMPLATE — démarrage rapide</label>
+        <p class="hunt-template-hint">Choisis une base prête à l’emploi ou pars de zéro. Les slots starter sont à remplacer avant le live.</p>
+        <input type="hidden" id="new-hunt-template-pick" value="-1">
+        <div class="hunt-template-grid" id="new-hunt-template-grid" role="listbox" aria-label="Templates de hunt"></div>
       </div>
       <div class="modal-actions">
         <button class="modal-btn secondary" id="new-hunt-cancel">ANNULER</button>
@@ -618,7 +653,7 @@
           <span class="opener-be-label">BE MOYEN</span>
           <span class="opener-be-val gold" id="opener-be-val">—</span>
                     </div>
-        <div class="opener-be-row">
+        <div class="opener-be-row opener-be-row--compact-hide">
           <span class="opener-be-label">GAINS ACTUELS</span>
           <span class="opener-be-val cyan" id="opener-current-win">0.00€</span>
         </div>
@@ -630,11 +665,11 @@
           <span class="opener-be-label">BE ÉVOLUTIF</span>
           <span class="opener-be-val" id="opener-be-remaining">—</span>
         </div>
-        <div class="opener-be-row">
+        <div class="opener-be-row opener-be-row--compact-hide">
           <span class="opener-be-label">PROGRESSION BE</span>
           <span class="opener-be-val" id="opener-be-progress">0%</span>
         </div>
-        <div class="opener-profit-hint" id="opener-profit-hint">Ajoute des gains pour remonter vers le vert.</div>
+        <div class="opener-profit-hint opener-be-row--compact-hide" id="opener-profit-hint">Ajoute des gains pour remonter vers le vert.</div>
       </div>
 
       <div class="opener-input-section">
@@ -734,8 +769,9 @@
         <input type="number" class="modal-input" id="t-mise" placeholder="0.00" step="0.01" min="0">
       </div>
       <div class="modal-field">
-        <label class="modal-label">LIEN REPLAY / PREUVE</label>
-        <input type="url" class="modal-input" id="t-replay" placeholder="https://..." style="font-size:13px;">
+        <label class="modal-label" for="t-replay">LIEN REPLAY / PREUVE <span class="modal-label-opt">(optionnel)</span></label>
+        <input type="url" class="modal-input" id="t-replay" placeholder="https://… (VOD, lien live, capture)" style="font-size:13px;">
+        <div class="tournoi-modal-hint" id="tournoi-modal-hint">Sans replay, la validation admin peut prendre plus de temps. Tu peux soumettre dès que le hunt est terminé.</div>
       </div>
       <div class="modal-actions">
         <button class="modal-btn secondary" onclick="closeTournoiModal()">ANNULER</button>
@@ -787,6 +823,25 @@
   <div class="gamdom-popup-msg">Rentre le gain de ton bonus directement depuis Gamdom :</div>
   <input type="number" class="gamdom-popup-input" id="gamdom-gain-input" placeholder="0.00" step="0.01" min="0">
   <button class="gamdom-popup-btn" onclick="confirmGamdomGain()">ENREGISTRER CE GAIN</button>
+</div>
+
+<div class="onboarding-overlay hidden" id="onboarding-overlay" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+  <div class="onboarding-card">
+    <div class="onboarding-kicker" id="onboarding-kicker">GUIDE DE DÉMARRAGE</div>
+    <div class="onboarding-title" id="onboarding-title">Bienvenue</div>
+    <div class="onboarding-text" id="onboarding-text"></div>
+    <div class="onboarding-role-row" id="onboarding-role-row">
+      <button type="button" class="onboarding-role-btn" data-role="streamer" onclick="selectOnboardingRole('streamer')">Je stream</button>
+      <button type="button" class="onboarding-role-btn" data-role="viewer" onclick="selectOnboardingRole('viewer')">Je regarde / joue</button>
+    </div>
+    <div class="onboarding-steps" id="onboarding-dots"></div>
+    <div class="onboarding-actions">
+      <button type="button" class="profile-mini-btn" id="onboarding-back-btn" onclick="prevOnboardingStep()">Retour</button>
+      <button type="button" class="profile-mini-btn primary" id="onboarding-next-btn" onclick="nextOnboardingStep()">Continuer</button>
+      <button type="button" class="profile-mini-btn" id="onboarding-action-btn" style="display:none;">Action</button>
+      <button type="button" class="profile-mini-btn" onclick="skipOnboarding()" style="margin-left:auto;">Passer</button>
+    </div>
+  </div>
 </div>
 
 </body>

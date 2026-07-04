@@ -153,6 +153,21 @@
   const STORAGE_KEY = 'huntmaster_v2';
   const CHANNEL_NAME = 'hm-bh-sync';
   const STREAMER_OVERLAY_KEY = 'hm_opener_streamer_overlay_v1';
+  const STUDIO_PREFS_KEY = 'hm_studio_prefs_v1';
+
+  function getStudioPrefs() {
+    try {
+      const p = JSON.parse(localStorage.getItem(STUDIO_PREFS_KEY) || '{}');
+      return {
+        showBonusCount: p.showBonusCount !== false,
+        showBe: p.showBe !== false,
+        showStartBalance: p.showStartBalance !== false,
+        showHuntName: p.showHuntName !== false,
+      };
+    } catch {
+      return { showBonusCount: true, showBe: true, showStartBalance: true, showHuntName: true };
+    }
+  }
 
   let hunts = [];
   let activeHuntId = null;
@@ -232,19 +247,20 @@
       evoClass = 'sh-red';
     }
 
+    const prefs = getStudioPrefs();
     const pctOpening = total > 0 ? (completed / total) * 100 : 0;
     const progBePct = startBalance > 0 ? Math.min(100, (currentWin / startBalance) * 100) : 0;
 
     root.innerHTML = `
-      <div class="sh-hunt">${escapeHtml(hunt.name || 'Hunt')}</div>
-      <div class="sh-line">${total} bonus · Avancement ${completed}/${total}</div>
-      <div class="sh-bar-label">Avancement bonus</div>
-      <div class="sh-progress-track"><div class="sh-progress-fill" style="width:${pctOpening}%"></div></div>
+      ${prefs.showHuntName ? `<div class="sh-hunt">${escapeHtml(hunt.name || 'Hunt')}</div>` : ''}
+      ${prefs.showBonusCount ? `<div class="sh-line">${total} bonus · Avancement ${completed}/${total}</div>` : ''}
+      ${prefs.showBonusCount ? `<div class="sh-bar-label">Avancement bonus</div>
+      <div class="sh-progress-track"><div class="sh-progress-fill" style="width:${pctOpening}%"></div></div>` : ''}
       <div class="sh-bar-label">Progression gains / solde départ</div>
       <div class="sh-progress-track"><div class="sh-progress-fill sh-fill-be" style="width:${progBePct}%"></div></div>
-      <div class="sh-row"><span>Solde départ</span><span>${escapeHtml(fmtEuro(startBalance))}</span></div>
-      <div class="sh-row"><span>BE moyen</span><span class="sh-gold">${beMoyen > 0 ? escapeHtml(beMoyen.toFixed(4).replace('.', ',') + '×') : '—'}</span></div>
-      <div class="sh-row"><span>BE évolutif</span><span class="${evoClass}">${escapeHtml(beEvoTxt)}</span></div>
+      ${prefs.showStartBalance ? `<div class="sh-row"><span>Solde départ</span><span>${escapeHtml(fmtEuro(startBalance))}</span></div>` : ''}
+      ${prefs.showBe ? `<div class="sh-row"><span>BE moyen</span><span class="sh-gold">${beMoyen > 0 ? escapeHtml(beMoyen.toFixed(4).replace('.', ',') + '×') : '—'}</span></div>
+      <div class="sh-row"><span>BE évolutif</span><span class="${evoClass}">${escapeHtml(beEvoTxt)}</span></div>` : ''}
     `;
   }
 
@@ -262,7 +278,7 @@
   } catch (_) {}
 
   window.addEventListener('storage', (ev) => {
-    if (ev.key === STORAGE_KEY || ev.key === STREAMER_OVERLAY_KEY) refresh();
+    if (ev.key === STORAGE_KEY || ev.key === STREAMER_OVERLAY_KEY || ev.key === STUDIO_PREFS_KEY) refresh();
   });
 
   document.getElementById('sh-close').addEventListener('click', () => {
@@ -271,7 +287,7 @@
     } catch (_) {}
     try {
       if (window.parent && window.parent !== window) {
-        window.parent.close();
+        window.parent.postMessage({ type: 'hm-streamer-hud-close' }, '*');
         return;
       }
     } catch (_) {}

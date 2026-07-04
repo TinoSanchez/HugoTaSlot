@@ -147,6 +147,10 @@ function showSubmitTournoi() {
     showAuth();
     return;
   }
+  const hintEl = document.getElementById('tournoi-modal-hint');
+  if (hintEl && !hintEl.textContent) {
+    hintEl.textContent = 'Replay optionnel — fournis-le pour accélérer la validation admin.';
+  }
   document.getElementById('tournoi-modal').classList.remove('hidden');
 }
 function closeTournoiModal() { document.getElementById('tournoi-modal').classList.add('hidden'); }
@@ -156,28 +160,75 @@ async function submitTournoi() {
   const gain = parseFloat(document.getElementById('t-gain').value);
   const mise = parseFloat(document.getElementById('t-mise').value);
   const replay = document.getElementById('t-replay').value.trim();
-  if (!name || isNaN(gain) || isNaN(mise) || mise <= 0) { showToast('Remplis tous les champs obligatoires', 'error'); return; }
-  if (!replay) { showToast('Un lien de preuve est requis pour vérification', 'error'); return; }
+  if (!name || isNaN(gain) || isNaN(mise) || mise <= 0) { showToast('Remplis nom, gain et mise', 'error'); return; }
   if (!isCloudUser()) { showToast('Connecte-toi pour soumettre', 'error'); return; }
 
   const c = getAuthClient();
   if (!c) { showToast('Client Supabase indisponible', 'error'); return; }
   try {
-    const { error } = await withTimeout(() => c.from('tournament_entries').insert([{
+    const { data, error } = await withTimeout(() => c.from('tournament_entries').insert([{
       user_id: currentUser.id,
       hunt_name: name,
       player_name: currentUser.displayName || currentUser.username || 'Anonyme',
       gain,
       mise,
-      replay_url: replay,
+      replay_url: replay || null,
       verified: false
-    }]), 12000);
+    }]).select('id,hunt_name,verified').single(), 12000);
     if (error) throw error;
     closeTournoiModal();
     await fetchTournoi();
     renderTournoiLeaderboard();
-    showToast('Hunt soumis ! En attente de vérification.', 'success', 4000);
+    if (typeof renderProfileTournoiSubmissions === 'function') renderProfileTournoiSubmissions();
+    if (typeof pushInAppNotif === 'function') {
+      pushInAppNotif({
+        type: 'tournoi',
+        title: 'Hunt soumis au tournoi',
+        body: replay ? `${name} — en attente de validation.` : `${name} — soumis sans replay (validation plus lente).`,
+      });
+    }
+    showToast(replay ? 'Hunt soumis — en attente de validation admin' : 'Hunt soumis sans replay — validation admin en cours', 'success', 4200);
+    if (data?.id && typeof cacheTournoiEntryState === 'function') cacheTournoiEntryState(data.id, !!data.verified);
   } catch (e) {
     showToast(mapAuthError(e) || 'Soumission impossible', 'error', 3500);
+  }
+}
+
+async function adminVerifyTournoiEntry(entryId, verified) {
+  if (!isCurrentUserAdmin()) { showToast('Accès admin requis', 'error'); return; }
+  const c = getAuthClient();
+  if (!c) return;
+  try {
+    const { error } = await withTimeout(() => c.rpc('admin_verify_tournament_entry', {
+      p_entry_id: entryId,
+      p_verified: !!verified,
+    }), 12000);
+    if (error) throw error;
+    showToast(verified ? 'Entrée validée' : 'Entrée refusée', verified ? 'success' : 'info', 2600);
+    if (typeof renderAdminPanel === 'function') await renderAdminPanel();
+    await fetchTournoi();
+    if (typeof renderTournoiLeaderboard === 'function') renderTournoiLeaderboard();
+  } catch (e) {
+    showToast(mapAuthError(e) || 'Action impossible', 'error', 3200);
+  }
+}
+
+async function adminRejectTournoiEntry(entryId) {
+  if (!isCurrentUserAdmin()) { showToast('Accès admin requis', 'error'); return; }
+  const c = getAuthClient();
+  if (!c) return;
+  const ok = typeof confirm === 'function'
+    ? await confirm('Refuser cette entrée ?', 'Elle sera supprimée du classement en attente.')
+    : true;
+  if (!ok) return;
+  try {
+    const { error } = await withTimeout(() => c.from('tournament_entries').delete().eq('id', entryId), 12000);
+    if (error) throw error;
+    showToast('Entrée refusée et retirée', 'info', 2600);
+    if (typeof renderAdminPanel === 'function') await renderAdminPanel();
+    await fetchTournoi();
+    if (typeof renderTournoiLeaderboard === 'function') renderTournoiLeaderboard();
+  } catch (e) {
+    showToast(mapAuthError(e) || 'Refus impossible', 'error', 3200);
   }
 }

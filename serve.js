@@ -49,7 +49,7 @@ const server = http.createServer((req, res) => {
       fs.readFile(filePath, (e, data) => {
         if (e) {
           // Fallback SPA : mime le rewrite Vercel "/(.*)" → index.html
-          // pour que /hunt, /blackjack, /pharaon... fonctionnent en dev local.
+          // pour que /hunt, /blackjack, /tournoi… fonctionnent en dev local.
           const accept = String(req.headers['accept'] || '');
           const ext = path.extname(pathname).toLowerCase();
           const looksLikeHtmlNav = accept.includes('text/html') && !ext;

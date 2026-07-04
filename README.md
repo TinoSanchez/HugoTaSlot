@@ -26,6 +26,7 @@ Tests et catalogue :
 
 ```bash
 npm test
+npm run verify:supabase
 npm run catalog:stats
 npm run enrich:images              # vignettes sr_* (Hub88 + Gamdom OG)
 npm run enrich:images:full         # + API Gamdom
@@ -56,12 +57,24 @@ npm run deploy:vercel
 
 ## Supabase
 
-Migrations dans `supabase/migrations/`. Le site prod utilise les constantes `ONLINE_SUPABASE_*` dans `app.js`. Le prototype `web/` utilise `VITE_SUPABASE_*` (cf. `web/.env.example`).
+Migrations dans `supabase/migrations/`. Vérifier la prod :
+
+```bash
+npm run verify:supabase
+```
+
+Migrations récentes à appliquer dans le SQL Editor si `verify:supabase` échoue : `20260704_claim_daily_drop_fix.sql`, `20260704_community_leaderboards.sql`, `20260704_site_maintenance.sql`, `20260704_public_hunt_shares.sql`.
+
+Le site prod utilise les constantes `ONLINE_SUPABASE_*` dans `app.js`. Le prototype `web/` utilise `VITE_SUPABASE_*` (cf. `web/.env.example`).
 
 ## PWA et debug
 
 - Installable : `manifest.webmanifest` + service worker (`sw.js`) pour le shell statique.
 - Logs verbeux : `?debug=1`, `localStorage.setItem('bh_debug','1')` ou `window.__BH_DEBUG__ = true`.
+
+## Changelog produit
+
+À chaque release, ajouter une entrée dans **`product-changelog.json`** (racine, copié au build). La page Updates charge ce fichier dynamiquement.
 
 ## Structure utile
 

@@ -26,6 +26,8 @@ const pageFiles = {
   tournoi: read('scripts/pages/tournoi.js'),
   'roue-depot': read('scripts/pages/roue-depot.js'),
   'mini-jeux': read('scripts/pages/mini-jeux.js'),
+  'hub-features': read('scripts/pages/hub-features.js'),
+  stats: read('scripts/pages/stats.js'),
 };
 const allJS = app + '\n' + Object.values(pageFiles).join('\n');
 
@@ -42,8 +44,8 @@ phantomAssets.forEach(f => {
   if (existsSync(path.join(ROOT, f))) err(`"${f}" devrait être supprimé mais existe encore`);
   else ok(`"${f}" absent ✓`);
 });
-if (!existsSync(path.join(ROOT, 'scripts/pages/pharaon.js'))) ok('scripts/pages/pharaon.js absent ✓');
-else err('scripts/pages/pharaon.js existe encore!');
+if (!existsSync(path.join(ROOT, 'scripts/pages/pharaon.js'))) ok('scripts/pages/pharaon.js absent (jeu retiré) ✓');
+else err('scripts/pages/pharaon.js existe encore — Le Pharaon a été retiré du produit');
 
 // ─── 2. Résidus pharaon ───
 console.log('\n── 2. Résidus pharaon ──');
@@ -67,6 +69,11 @@ lazyCases.forEach(fn => {
 // Fonctions encore dans app.js (non extraites)
 const appFns = ['renderStatsPage','renderAdminPanel','renderHomeHubMetrics','renderUpdatesPage','renderReviewPage','renderNewsPage','runSupabaseHealthCheck','flushFeedbackQueue'];
 appFns.forEach(fn => {
+  if (fn === 'renderStatsPage') {
+    if (pageFiles.stats.includes('function renderStatsPage')) ok('renderStatsPage extrait dans stats.js ✓');
+    else err('renderStatsPage absent de stats.js');
+    return;
+  }
   if (!app.includes('function ' + fn)) err(`${fn} absent de app.js mais attendu`);
   else ok(`${fn} présent dans app.js ✓`);
 });

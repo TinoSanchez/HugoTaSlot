@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HugoTaSlot — Hunt en direct</title>
+  <meta name="description" content="Suivi live d'un Bonus Hunt HugoTaSlot X 19EnPlein">
+  <meta name="theme-color" content="#020403">
+  <link rel="icon" href="./assets/icon-hunt.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --green: #00DC6E;
+      --gold: #FFC93C;
+      --red: #E07A8C;
+      --text: #EDEEF2;
+      --dim: #9DA2AB;
+      --border: rgba(0, 220, 110, 0.18);
+      --panel: rgba(8, 14, 11, 0.92);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: radial-gradient(ellipse at 20% 0%, #0f1814 0%, #020403 58%);
+      color: var(--text);
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 18px 16px 40px; }
+    .head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .brand {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 2px; color: var(--green);
+    }
+    .live-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px; border-radius: 999px;
+      border: 1px solid rgba(0,220,110,0.35);
+      background: rgba(0,220,110,0.08);
+      font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--green);
+    }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.85)} }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 18px 16px;
+      margin-bottom: 14px;
+    }
+    .hunt-name {
+      font-size: clamp(28px, 5vw, 42px);
+      font-weight: 800; letter-spacing: .04em; color: var(--gold); line-height: 1.1;
+      margin: 0 0 8px;
+    }
+    .sub { color: var(--dim); font-size: 14px; margin-bottom: 14px; }
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;
+    }
+    .kpi {
+      border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 12px;
+      background: rgba(255,255,255,0.02);
+    }
+    .kpi-l {
+      font-family: 'Share Tech Mono', monospace; font-size: 10px;
+      letter-spacing: 1px; color: var(--dim); margin-bottom: 6px;
+    }
+    .kpi-v { font-size: 24px; font-weight: 800; }
+    .kpi-v.pos { color: var(--green); }
+    .kpi-v.neg { color: var(--red); }
+    .kpi-v.gold { color: var(--gold); }
+    .section-title {
+      font-family: 'Share Tech Mono', monospace; font-size: 11px;
+      letter-spacing: 2px; color: var(--green); margin: 0 0 10px;
+    }
+    .bonus-list { display: flex; flex-direction: column; gap: 8px; }
+    .bonus-row {
+      display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center;
+      padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+    .bonus-row.opened { border-color: rgba(0,220,110,0.22); }
+    .bonus-row.pending { opacity: .72; }
+    .bonus-idx {
+      font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--dim);
+    }
+    .bonus-name { font-weight: 700; font-size: 16px; line-height: 1.2; }
+    .bonus-meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+    .bonus-win {
+      text-align: right; font-family: 'Share Tech Mono', monospace; font-size: 13px;
+    }
+    .bonus-win.pos { color: var(--green); }
+    .bonus-win.wait { color: var(--dim); }
+    .bar-label { font-size: 11px; color: var(--dim); margin: 10px 0 6px; }
+    .bar-track {
+      height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden;
+    }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #00DC6E, #FFC93C); width: 0; transition: width .45s ease; }
+    .foot {
+      margin-top: 14px; text-align: center;
+      font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--dim);
+    }
+    .foot a { color: var(--green); text-decoration: none; }
+    .empty, .err {
+      text-align: center; padding: 48px 16px; color: var(--dim);
+    }
+    .err { color: var(--red); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div class="brand">HUGOTASLOT × 19ENPLEIN · HUNT LIVE</div>
+      <div class="live-pill" id="live-pill" hidden><span class="live-dot"></span> MISE À JOUR AUTO</div>
+    </div>
+    <div id="root"><div class="empty">Chargement du hunt…</div></div>
+    <div class="foot"><a href="https://hugotaslot.fr/">hugotaslot.fr</a> · vue publique lecture seule</div>
+  </div>
+<script>
+(function () {
+  const SUPABASE_URL = 'https://kkqskgxjyurtplbububc.supabase.co';
+  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrcXNrZ3hqeXVydHBsYnVidWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTA0MjcsImV4cCI6MjA5Mjg4NjQyN30.7f8Rub_5lO-yfZSbIUvtaUVZew_1XABwIvvU2yXmG5c';
+  const POLL_MS = 2000;
+
+  function getSlug() {
+    const q = new URLSearchParams(location.search).get('slug');
+    if (q) return String(q).trim().toLowerCase();
+    const m = location.pathname.match(/\/h\/([a-z0-9]+)/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function fmt(n, sym) {
+    return `${Number(n || 0).toFixed(2).replace('.', ',')}${sym || '€'}`;
+  }
+
+  function symFor(cur) {
+    const map = { EUR: '€', USD: '$', GBP: '£', CAD: 'CA$', CHF: 'CHF' };
+    return map[String(cur || 'EUR').toUpperCase()] || '€';
+  }
+
+  let lastUpdatedAt = '';
+  let client = null;
+
+  function renderPayload(data) {
+    const root = document.getElementById('root');
+    const pill = document.getElementById('live-pill');
+    if (!data || !data.payload) {
+      root.innerHTML = '<div class="err">Hunt introuvable ou partage désactivé.</div>';
+      if (pill) pill.hidden = true;
+      return;
+    }
+    if (pill) pill.hidden = false;
+    const p = data.payload;
+    const hunt = p.hunt || {};
+    const stats = p.stats || {};
+    const bonuses = Array.isArray(hunt.bonuses) ? hunt.bonuses : [];
+    const sym = symFor(hunt.currency);
+    const profit = Number(stats.profit || 0);
+    const opened = Number(stats.openedCount || bonuses.filter((b) => b && b.win !== null && b.win !== undefined).length);
+    const total = Number(stats.bonusCount || bonuses.length);
+    const pct = total > 0 ? Math.min(100, (opened / total) * 100) : 0;
+    const updated = data.updated_at ? new Date(data.updated_at).toLocaleTimeString('fr-FR') : '—';
+
+    const rows = bonuses.map((b, i) => {
+      const openedRow = b && b.win !== null && b.win !== undefined && !Number.isNaN(Number(b.win));
+      const stake = Number(b.stake || 0);
+      const win = Number(b.win || 0);
+      const mult = stake > 0 && openedRow ? win / stake : 0;
+      return `<div class="bonus-row ${openedRow ? 'opened' : 'pending'}">
+        <div class="bonus-idx">#${i + 1}</div>
+        <div>
+          <div class="bonus-name">${esc(b.slotName || 'Slot')}</div>
+          <div class="bonus-meta">${esc(b.slotProvider || '—')} · mise ${fmt(stake, sym)}</div>
+        </div>
+        <div class="bonus-win ${openedRow ? 'pos' : 'wait'}">${openedRow ? fmt(win, sym) + (mult > 0 ? `<br>×${mult.toFixed(2)}` : '') : '—'}</div>
+      </div>`;
+    }).join('');
+
+    root.innerHTML = `
+      <div class="card">
+        <h1 class="hunt-name">${esc(hunt.name || 'Bonus Hunt')}</h1>
+        <div class="sub">${total} bonus · ${opened} ouverts · ${esc(stats.casinoLabel || hunt.casino || 'Casino')} · maj ${esc(updated)}</div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-l">PROFIT</div><div class="kpi-v ${profit >= 0 ? 'pos' : 'neg'}">${profit >= 0 ? '+' : ''}${fmt(profit, sym)}</div></div>
+          <div class="kpi"><div class="kpi-l">SOLDE DÉPART</div><div class="kpi-v gold">${fmt(stats.startBalance, sym)}</div></div>
+          <div class="kpi"><div class="kpi-l">GAINS TOTAUX</div><div class="kpi-v">${fmt(stats.totalWin, sym)}</div></div>
+          <div class="kpi"><div class="kpi-l">BE MOYEN</div><div class="kpi-v gold">${Number(stats.beAvg || 0) > 0 ? Number(stats.beAvg).toFixed(4).replace('.', ',') + '×' : '—'}</div></div>
+        </div>
+        <div class="bar-label">Avancement ouverture</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      </div>
+      <div class="card">
+        <div class="section-title">BONUS EN DIRECT</div>
+        <div class="bonus-list">${rows || '<div class="empty">Aucun bonus pour l’instant.</div>'}</div>
+      </div>`;
+  }
+
+  async function fetchOnce(slug) {
+    if (!client) client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    const { data, error } = await client.rpc('get_public_hunt_share', { p_slug: slug });
+    if (error) throw error;
+    return data;
+  }
+
+  async function tick(slug) {
+    try {
+      const data = await fetchOnce(slug);
+      const ts = data && data.updated_at ? String(data.updated_at) : '';
+      if (ts !== lastUpdatedAt || !lastUpdatedAt) {
+        lastUpdatedAt = ts;
+        renderPayload(data);
+      }
+    } catch (e) {
+      document.getElementById('root').innerHTML = `<div class="err">Erreur de chargement : ${esc(e.message || e)}</div>`;
+    }
+  }
+
+  const slug = getSlug();
+  if (!slug) {
+    document.getElementById('root').innerHTML = '<div class="err">Lien invalide (slug manquant).</div>';
+    return;
+  }
+  tick(slug);
+  setInterval(() => { tick(slug); }, POLL_MS);
+})();
+</script>
+</body>
+</html>

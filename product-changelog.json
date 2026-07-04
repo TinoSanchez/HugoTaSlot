@@ -1,0 +1,69 @@
+{
+  "currentVersion": "1.05",
+  "updatedAt": "2026-07-04",
+  "entries": [
+    {
+      "version": "1.05",
+      "date": "2026-07-04",
+      "items": [
+        "Objectifs hebdo mini-jeux (ex. 5 parties Black Jack → bonus drop +20 pts).",
+        "Historique des 10 dernières parties par jeu dans le panneau latéral.",
+        "Bannière invité vs cloud expliquée sur la page Mini Jeux.",
+        "PWA : bannière d’installation + icônes manifest améliorées.",
+        "Accessibilité : lien d’évitement (skip-link) et contrastes texte néon renforcés."
+      ]
+    },
+    {
+      "version": "1.04",
+      "date": "2026-07-04",
+      "items": [
+        "Bandeau Discord visible sur l’accueil (bénéfices /hunts, /leaderboard, /live).",
+        "Bot Discord : commande /live slug pour ouvrir un hunt public partagé.",
+        "Annonces slot : preview image admin + lien hunt pré-rempli (Discord et /hunt?slotTitle=…)."
+      ]
+    },
+    {
+      "version": "1.03",
+      "date": "2026-07-04",
+      "items": [
+        "Changelog produit externalisé (product-changelog.json) — une entrée par release.",
+        "Dashboard admin : stats tournoi, hunts cloud, joueurs actifs 7 jours.",
+        "Modération tournoi en lot (valider / refuser la sélection).",
+        "Alerting ops : test webhook + simulation d’erreur prod depuis l’admin.",
+        "Export PDF hunt, templates visibles, maintenance serveur Supabase.",
+        "Lien public live hunt + classements communauté (wager, streak)."
+      ]
+    },
+    {
+      "version": "1.02",
+      "date": "2026-07-04",
+      "items": [
+        "Onboarding guidé au premier lancement (streamer / viewer).",
+        "Studio Stream : opener, mini-opener et HUD au même endroit.",
+        "Classement communautaire sur l’accueil + badge de rang profil.",
+        "Changelog produit sur la page Updates.",
+        "Soumission tournoi en 1 clic depuis un hunt actif.",
+        "Fix solde points : persistance après refresh (sync cloud).",
+        "Export image PNG du hunt (récap Discord/Twitter).",
+        "Classements élargis : tournoi, wager mini-jeux, streak drop.",
+        "Statut soumissions tournoi dans le profil + validation admin.",
+        "Notifications in-app (vidéos, slots, drop, tournoi).",
+        "Landing accueil avec vitrine visuelle + CTA premier hunt.",
+        "Slot de la semaine sur Actualités avec ajout au hunt.",
+        "Blackjack refait (UI table + jetons HugoTaSlot)."
+      ]
+    },
+    {
+      "version": "1.01",
+      "date": "2026-06",
+      "items": [
+        "Bonus Hunt cloud Supabase + share code.",
+        "Drop quotidien avec streak et rangs (Fer → Master).",
+        "12 mini-jeux + statistiques joueur.",
+        "Opener stream + HUD OBS / Picture-in-Picture.",
+        "Tournoi mensuel Europe/Paris.",
+        "Bot Discord (/hunts, /leaderboard, actualités slots)."
+      ]
+    }
+  ]
+}

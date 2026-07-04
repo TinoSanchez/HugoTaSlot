@@ -128,7 +128,7 @@ Le site reste **techniquement une SPA** (un seul `index.html`, état Supabase + 
 | `/blackjack`         | Tableau Blackjack  |
 | `/mise-optimale`     | Mise Optimale      |
 | `/roue-depot`        | Roue du Dépôt      |
-| `/pharaon`           | Le Pharaon         |
+| `/studio`            | Studio Stream      |
 | `/tournoi`           | Tournoi            |
 | `/stats`             | Statistiques       |
 | `/mini-jeux`         | Mini Jeux          |
@@ -144,11 +144,11 @@ Le site reste **techniquement une SPA** (un seul `index.html`, état Supabase + 
 - Routing initial : `initV101()` lit `location.pathname` et monte la bonne page (au lieu d'un `switchPage('home')` codé en dur).
 - `vercel.json` rewrite `/(.*)` → `index.html`, donc un **refresh ou un partage de lien** vers n'importe quelle URL fonctionne.
 
-**Lazy `jeux.json`** : le catalogue (~1.9 Mo en prod) **n'est plus chargé au boot**. `ensureSlotsLoaded()` (promesse mémoïsée) le déclenche au premier `switchPage('hunt')`. `refreshCatalogSilently()` ne pre-fetch pas tant que l'utilisateur n'a jamais consulté le catalogue. Sur une session qui reste sur `/blackjack` ou `/pharaon`, `jeux.json` n'est **jamais téléchargé**.
+**Lazy `jeux.json`** : le catalogue (~1.9 Mo en prod) **n'est plus chargé au boot**. `ensureSlotsLoaded()` (promesse mémoïsée) le déclenche au premier `switchPage('hunt')`. `refreshCatalogSilently()` ne pre-fetch pas tant que l'utilisateur n'a jamais consulté le catalogue. Sur une session qui reste sur `/blackjack` ou `/studio`, `jeux.json` n'est **jamais téléchargé**.
 
-**Lazy modules par page** : registre `LAZY_PAGE_SCRIPTS` (`app.js`) prêt à recevoir des entrées du type `pharaoh_slot: './scripts/pages/pharaon.js'`. `loadLazyPageScript(page)` est appelé dans `switchPage()` et est un no-op tant que la page n'est pas inscrite (rétrocompat totale).
+**Lazy modules par page** : registre `LAZY_PAGE_SCRIPTS` dans `app.js` — modules dans `scripts/pages/` (blackjack, mini-jeux, hub-features, stats, etc.). `loadLazyPageScript(page)` déduplique par URL de script.
 
-**Passe 2 prévue** : extraire les pages lourdes (`pharaon`, `roue_depot`, `mini-jeux`, `tournoi`, `admin`…) de `app.js` vers `scripts/pages/*.js` chargés à la demande. Plan détaillé dans [BACKLOG.md](./BACKLOG.md#refactoring-multi-pages--état--suite).
+**Passe 2 (en cours)** : extraire `admin`, `news`, `updates`, `review` de `app.js`. Plan : [BACKLOG.md](./BACKLOG.md#refactoring-multi-pages--état--suite).
 
 ---
 
@@ -168,6 +168,6 @@ Le site reste **techniquement une SPA** (un seul `index.html`, état Supabase + 
 ## Évolution prévue (en cours / partiel)
 
 - ✅ Passe 1 multi-pages : URLs distinctes, lazy `jeux.json`, infra `LAZY_PAGE_SCRIPTS`.
-- 🔜 Passe 2 multi-pages : extraire pages lourdes (`pharaon`, `roue_depot`, `mini-jeux`, `tournoi`, `admin`) de `app.js` vers `scripts/pages/*.js` chargés à la demande.
-- Fusionner un jour le prototype `web/` dans le site principal **ou** le retirer si abandonné.
-- Jusqu’à décision explicite : **`index.html` + `styles.css` + `app.js` = prod**.
+- 🔄 Passe 2 multi-pages : modules lazy (`hub-features`, `stats`, mini-jeux, tournoi…) — reste `admin` / contenu dans `app.js`.
+- **Maintenance globale** : flag serveur Supabase (`get_site_maintenance` / `admin_set_maintenance`) — migration `20260704_site_maintenance.sql`.
+- Prototype `web/` : brouillon Vite documenté, **hors prod** — voir `web/README.md`.

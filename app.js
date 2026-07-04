@@ -41,7 +41,7 @@ const state = {
   filteredSlots: [],
   openerIndex: 0,
   pendingSlot: null,
-  bonusView: { status: 'all', type: 'all', sort: 'order', q: '', provider: '', minStake: '', maxStake: '' },
+  bonusView: { status: 'all', type: 'all', winFilter: 'all', sort: 'order', q: '', provider: '', minStake: '', maxStake: '' },
   huntListView: { q: '' },
   huntTab: 'workspace',
   catalogMode: 'gamdom',
@@ -731,6 +731,7 @@ function save() {
   if (isCloudUser()) {
     try { localStorage.setItem(LOCAL_SYNCED_KEY, '0'); } catch (_) {}
     scheduleCloudSync();
+    schedulePublicHuntLivePublish();
   }
 }
 
@@ -800,6 +801,7 @@ function loadLocal() {
     state.bonusView = {
       status: 'all',
       type: 'all',
+      winFilter: 'all',
       sort: 'order',
       q: '',
       provider: '',
@@ -1516,12 +1518,10 @@ function hideNetBanner() {
 
 const RUNTIME_LOG_KEY = 'hm_runtime_logs_v1';
 const ADMIN_AUDIT_LOCAL_KEY = 'hm_admin_audit_local_v1';
-const MAINTENANCE_KEY = 'hm_maintenance_v1';
 const AUTO_SNAPSHOT_KEY = 'hm_auto_snapshots_v1';
 const OPS_ALERTS_KEY = 'hm_ops_alerts_v1';
 const HUNT_TEMPLATES_KEY = 'hm_hunt_templates_v1';
 const BONUS_FILTER_PRESETS_KEY = 'hm_bonus_filter_presets_v1';
-const OPENER_KEYBINDS_PROFILES_KEY = 'hm_opener_keybind_profiles_v1';
 const GAME_HISTORY_KEY = 'hm_game_history_v1';
 const PLAYER_STATS_KEY = 'hm_player_stats_v1';
 const HUNT_META_KEY = 'hm_hunt_meta_v1';
@@ -1557,11 +1557,105 @@ function getBonusFilterPresets() {
 function saveBonusFilterPresets(arr) {
   try { localStorage.setItem(BONUS_FILTER_PRESETS_KEY, JSON.stringify((arr || []).slice(0, 25))); } catch (_) {}
 }
-function getOpenerKeybindProfiles() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(OPENER_KEYBINDS_PROFILES_KEY) || '[]');
-    return Array.isArray(raw) ? raw : [];
-  } catch (_) { return []; }
+function makeTemplateBonusRows(count, stake) {
+  return Array.from({ length: count }, (_, i) => ({
+    slotId: uid(),
+    slotName: `Slot ${i + 1}`,
+    slotProvider: '',
+    slotImage: '',
+    stake: Number(stake || 0),
+    bonusType: 'normal',
+    gamdomUrl: ''
+  }));
+}
+function buildDefaultHuntTemplates() {
+  return [
+    {
+      id: 'builtin-quick5',
+      name: 'Quick start · 5 bonus',
+      desc: 'Premier live — 500 €, mises à 2 €',
+      casino: 'gamdom',
+      currency: 'EUR',
+      startBalance: 500,
+      bonusCount: 5,
+      bonuses: makeTemplateBonusRows(5, 2)
+    },
+    {
+      id: 'builtin-classic10',
+      name: 'Classique · 10 bonus',
+      desc: 'Format stream standard — 1 000 €',
+      casino: 'gamdom',
+      currency: 'EUR',
+      startBalance: 1000,
+      bonusCount: 10,
+      bonuses: makeTemplateBonusRows(10, 1)
+    },
+    {
+      id: 'builtin-marathon15',
+      name: 'Marathon · 15 bonus',
+      desc: 'Long format — 1 500 €, mises serrées',
+      casino: 'gamdom',
+      currency: 'EUR',
+      startBalance: 1500,
+      bonusCount: 15,
+      bonuses: makeTemplateBonusRows(15, 0.8)
+    }
+  ];
+}
+function getHuntTemplatePickList() {
+  return buildDefaultHuntTemplates().concat(getHuntTemplates());
+}
+function getSelectedNewHuntTemplate() {
+  const pickIdx = Number(document.getElementById('new-hunt-template-pick')?.value ?? -1);
+  if (!Number.isFinite(pickIdx) || pickIdx < 0) return null;
+  return getHuntTemplatePickList()[pickIdx] || null;
+}
+function applyNewHuntTemplatePrefill(tpl) {
+  if (!tpl) return;
+  const balEl = document.getElementById('new-hunt-bal-input');
+  if (balEl) balEl.value = String(Number(tpl.startBalance || 100));
+  populateCurrencySelect(document.getElementById('new-hunt-currency'), tpl.currency || 'EUR');
+  populateCasinoSelect(document.getElementById('new-hunt-casino'), tpl.casino || 'gamdom');
+  updateNewHuntCurrencyHint();
+}
+function selectNewHuntTemplate(pickIdx) {
+  const idx = Number(pickIdx);
+  const pickEl = document.getElementById('new-hunt-template-pick');
+  if (pickEl) pickEl.value = String(Number.isFinite(idx) ? idx : -1);
+  document.querySelectorAll('.hunt-template-card').forEach((el) => {
+    el.classList.toggle('selected', Number(el.dataset.pick) === idx);
+  });
+  if (!Number.isFinite(idx) || idx < 0) return;
+  const tpl = getHuntTemplatePickList()[idx];
+  if (tpl) applyNewHuntTemplatePrefill(tpl);
+}
+function renderHuntTemplateGrid() {
+  const grid = document.getElementById('new-hunt-template-grid');
+  if (!grid) return;
+  const templates = getHuntTemplatePickList();
+  const cards = [
+    `<button type="button" class="hunt-template-card selected" data-pick="-1" onclick="selectNewHuntTemplate(-1)">
+      <span class="hunt-template-card-badge">Vide</span>
+      <span class="hunt-template-card-title">Sans template</span>
+      <span class="hunt-template-card-meta">Balance et bonus à saisir</span>
+    </button>`
+  ].concat(templates.map((t, i) => {
+    const isUser = String(t.id || '').startsWith('builtin-') === false && !!t.id;
+    const badgeCls = isUser ? 'hunt-template-card-badge user' : 'hunt-template-card-badge';
+    const badge = isUser ? 'Perso' : 'Starter';
+    const casino = getCasinoLabel(getCasinoKey(t.casino || 'gamdom'));
+    const count = Number(t.bonusCount || (t.bonuses || []).length || 0);
+    const bal = fmt(Number(t.startBalance || 0), t.currency || 'EUR');
+    const meta = t.desc || `${count} bonus · ${bal} · ${casino}`;
+    return `<button type="button" class="hunt-template-card" data-pick="${i}" onclick="selectNewHuntTemplate(${i})">
+      <span class="${badgeCls}">${escapeHtml(badge)}</span>
+      <span class="hunt-template-card-title">${escapeHtml(t.name || `Template ${i + 1}`)}</span>
+      <span class="hunt-template-card-meta">${escapeHtml(meta)}</span>
+    </button>`;
+  }));
+  grid.innerHTML = cards.join('');
+  const pickEl = document.getElementById('new-hunt-template-pick');
+  if (pickEl) pickEl.value = '-1';
 }
 function getHuntMetaMap() {
   try {
@@ -1593,17 +1687,6 @@ function removeHuntMeta(huntId) {
   delete m[String(huntId)];
   saveHuntMetaMap(m);
 }
-function saveOpenerKeybindProfiles(arr) {
-  try { localStorage.setItem(OPENER_KEYBINDS_PROFILES_KEY, JSON.stringify((arr || []).slice(0, 20))); } catch (_) {}
-}
-function populateOpenerProfilesSelect() {
-  const el = document.getElementById('home-opener-profile');
-  if (!el) return;
-  const profiles = getOpenerKeybindProfiles();
-  el.innerHTML = ['<option value="">Profil raccourcis...</option>']
-    .concat(profiles.map((p, i) => `<option value="${i}">${escapeHtml(p.name || `Profil ${i + 1}`)}</option>`))
-    .join('');
-}
 function populateBonusFilterPresetsSelect() {
   const el = document.getElementById('bonus-filter-presets');
   if (!el) return;
@@ -1611,14 +1694,6 @@ function populateBonusFilterPresetsSelect() {
   el.innerHTML = ['<option value="">Preset filtre...</option>']
     .concat(presets.map((p, i) => `<option value="${i}">${escapeHtml(p.name || `Preset ${i + 1}`)}</option>`))
     .join('');
-}
-function populateTemplateSelect(selectEl) {
-  if (!selectEl) return;
-  const templates = getHuntTemplates();
-  const opts = ['<option value="">Aucun template</option>'].concat(
-    templates.map((t, i) => `<option value="${i}">${escapeHtml(t.name || `Template ${i + 1}`)} (${Number(t.bonusCount || 0)} bonus)</option>`)
-  );
-  selectEl.innerHTML = opts.join('');
 }
 function saveActiveHuntAsTemplate() {
   if (!requireWriteAccess('Création template bloquée')) return;
@@ -1647,25 +1722,58 @@ function saveActiveHuntAsTemplate() {
   saveHuntTemplates(templates);
   showToast('Template sauvegardé', 'success');
 }
+const MAINTENANCE_DEFAULT = { enabled: false, message: 'Maintenance en cours. Mode lecture seule temporaire.' };
+let maintenanceCache = { ...MAINTENANCE_DEFAULT, fetchedAt: 0, source: 'default' };
+const MAINTENANCE_POLL_MS = 60000;
+let maintenancePollTimer = null;
+
+function normalizeMaintenanceConfig(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    enabled: !!(src.enabled ?? src.active),
+    message: String(src.message || MAINTENANCE_DEFAULT.message).slice(0, 220)
+  };
+}
 function getMaintenanceConfig() {
+  return normalizeMaintenanceConfig(maintenanceCache);
+}
+async function refreshMaintenanceConfig(force = false) {
+  const now = Date.now();
+  if (!force && maintenanceCache.fetchedAt && (now - maintenanceCache.fetchedAt) < MAINTENANCE_POLL_MS) {
+    return getMaintenanceConfig();
+  }
+  const c = getAuthClient();
+  if (!c) {
+    if (!maintenanceCache.fetchedAt) {
+      maintenanceCache = { ...MAINTENANCE_DEFAULT, fetchedAt: now, source: 'offline' };
+    }
+    return getMaintenanceConfig();
+  }
   try {
-    const raw = JSON.parse(localStorage.getItem(MAINTENANCE_KEY) || '{}');
-    return {
-      enabled: !!raw.enabled,
-      message: String(raw.message || 'Maintenance en cours. Mode lecture seule temporaire.')
-    };
-  } catch (_) {
-    return { enabled: false, message: 'Maintenance en cours. Mode lecture seule temporaire.' };
+    const { data, error } = await cloudCall('sync', () => c.rpc('get_site_maintenance'), {
+      retries: 1,
+      timeoutMs: 8000,
+      delayMs: 300,
+      quiet: true
+    });
+    if (error) throw error;
+    const cfg = normalizeMaintenanceConfig(data);
+    maintenanceCache = { ...cfg, fetchedAt: now, source: 'cloud' };
+    renderMaintenanceBanner();
+    return cfg;
+  } catch (e) {
+    bhWarn('refreshMaintenanceConfig', e);
+    if (!maintenanceCache.fetchedAt) {
+      maintenanceCache = { ...MAINTENANCE_DEFAULT, fetchedAt: now, source: 'fallback' };
+    }
+    return getMaintenanceConfig();
   }
 }
-function saveMaintenanceConfig(cfg) {
-  const roleResolved = String(p?.role || 'player').trim().toLowerCase();
-  const statusResolved = String(p?.status || 'active').trim().toLowerCase();
-  const next = {
-    enabled: !!cfg?.enabled,
-    message: String(cfg?.message || 'Maintenance en cours. Mode lecture seule temporaire.').slice(0, 220)
-  };
-  try { localStorage.setItem(MAINTENANCE_KEY, JSON.stringify(next)); } catch (_) {}
+function startMaintenancePolling() {
+  if (maintenancePollTimer) return;
+  maintenancePollTimer = setInterval(() => {
+    refreshMaintenanceConfig(false).catch(() => {});
+  }, MAINTENANCE_POLL_MS);
 }
 function getOpsAlertsConfig() {
   try {
@@ -1724,14 +1832,18 @@ function restoreLatestSnapshot() {
   }
   showToast('Snapshot restauré', 'success');
 }
-async function sendOpsAlert(level, message) {
+async function sendOpsAlert(level, message, opts = {}) {
   try {
     const cfg = getOpsAlertsConfig();
-    if (!cfg.enabled || !/^https?:\/\//i.test(cfg.webhookUrl || '')) return;
+    if (!cfg.enabled || !/^https?:\/\//i.test(cfg.webhookUrl || '')) {
+      return { ok: false, reason: 'disabled_or_no_url' };
+    }
     const now = Date.now();
-    if (now - lastOpsAlertAt < 45000) return;
-    lastOpsAlertAt = now;
-    await fetch(cfg.webhookUrl, {
+    if (!opts.force && now - lastOpsAlertAt < 45000) {
+      return { ok: false, reason: 'cooldown' };
+    }
+    if (!opts.force) lastOpsAlertAt = now;
+    const res = await fetch(cfg.webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1739,10 +1851,16 @@ async function sendOpsAlert(level, message) {
         level: String(level || 'error'),
         message: String(message || '').slice(0, 300),
         ts: new Date().toISOString(),
-        url: String(location?.href || '')
+        url: String(location?.href || ''),
+        source: String(opts.source || 'runtime'),
+        test: !!opts.test
       })
     });
-  } catch (_) {}
+    if (!res.ok) return { ok: false, reason: `http_${res.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: String(e?.message || e) };
+  }
 }
 function isMaintenanceReadOnly() {
   const m = getMaintenanceConfig();
@@ -1796,7 +1914,7 @@ function pushRuntimeLog(level, message) {
     localStorage.setItem(RUNTIME_LOG_KEY, JSON.stringify(logs.slice(0, 40)));
   } catch (_) {}
   const lvl = String(level || 'info').toLowerCase();
-  if (lvl === 'error') sendOpsAlert(lvl, message);
+  if (lvl === 'error') sendOpsAlert(lvl, message).catch(() => {});
 }
 function clearRuntimeLogs() {
   try { localStorage.removeItem(RUNTIME_LOG_KEY); } catch (_) {}
@@ -2289,6 +2407,13 @@ document.getElementById('bonus-type-filter').addEventListener('change', (e) => {
   const h = activeHunt();
   if (h) renderBonusList(h);
 });
+const _bonusWinFilter = document.getElementById('bonus-win-filter');
+if (_bonusWinFilter) _bonusWinFilter.addEventListener('change', (e) => {
+  state.bonusView.winFilter = e.target.value || 'all';
+  save();
+  const h = activeHunt();
+  if (h) renderBonusList(h);
+});
 document.getElementById('bonus-sort').addEventListener('change', (e) => {
   state.bonusView.sort = e.target.value || 'order';
   save();
@@ -2382,9 +2507,10 @@ document.getElementById('btn-del-filter-preset').addEventListener('click', () =>
   showToast(`Preset "${removed?.name || ''}" supprimé`, 'info', 1500);
 });
 document.getElementById('btn-reset-filters').addEventListener('click', () => {
-  state.bonusView = { status: 'all', type: 'all', sort: 'order', q: '', provider: '', minStake: '', maxStake: '' };
+  state.bonusView = { status: 'all', type: 'all', winFilter: 'all', sort: 'order', q: '', provider: '', minStake: '', maxStake: '' };
   const statusEl = document.getElementById('bonus-status-filter');
   const typeEl = document.getElementById('bonus-type-filter');
+  const winEl = document.getElementById('bonus-win-filter');
   const sortEl = document.getElementById('bonus-sort');
   const qEl = document.getElementById('bonus-search-filter');
   const providerEl = document.getElementById('bonus-provider-filter');
@@ -2393,6 +2519,7 @@ document.getElementById('btn-reset-filters').addEventListener('click', () => {
   const presetsEl = document.getElementById('bonus-filter-presets');
   if (statusEl) statusEl.value = 'all';
   if (typeEl) typeEl.value = 'all';
+  if (winEl) winEl.value = 'all';
   if (sortEl) sortEl.value = 'order';
   if (qEl) qEl.value = '';
   if (providerEl) providerEl.value = '';
@@ -2461,6 +2588,531 @@ function exportActiveHunt() {
     URL.revokeObjectURL(url);
     showToast('Hunt exporté', 'success');
   });
+}
+
+function getHuntExportSummary(hunt) {
+  const bonuses = Array.isArray(hunt?.bonuses) ? hunt.bonuses : [];
+  const currency = hunt?.currency || getDisplayCurrency();
+  const startBalance = Number(hunt?.startBalance || 0);
+  const totalStake = bonuses.reduce((s, b) => s + Number(b.stake || 0), 0);
+  const openedBonuses = bonuses.filter((b) => b && b.win !== null && !Number.isNaN(Number(b.win)));
+  const totalWin = openedBonuses.reduce((s, b) => s + Number(b.win || 0), 0);
+  const profit = totalWin - startBalance;
+  const beAvg = totalStake > 0 ? startBalance / totalStake : 0;
+  const topBonuses = openedBonuses
+    .map((b) => {
+      const stake = Number(b.stake || 0);
+      const win = Number(b.win || 0);
+      return {
+        name: String(b.slotName || 'Slot').trim() || 'Slot',
+        provider: String(b.slotProvider || '').trim(),
+        win,
+        stake,
+        mult: stake > 0 ? win / stake : 0,
+      };
+    })
+    .sort((a, b) => b.win - a.win)
+    .slice(0, 5);
+  return {
+    currency,
+    startBalance,
+    totalWin,
+    profit,
+    beAvg,
+    bonusCount: bonuses.length,
+    openedCount: openedBonuses.length,
+    casinoLabel: getCasinoLabel(getCasinoKey(hunt?.casino || 'gamdom')),
+    topBonuses,
+  };
+}
+
+function loadExportImageAsset(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`asset_load_failed:${url}`));
+    img.src = url;
+  });
+}
+
+function canvasRoundRect(ctx, x, y, w, h, r) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
+
+function truncateCanvasText(ctx, text, maxWidth) {
+  const raw = String(text || '');
+  if (ctx.measureText(raw).width <= maxWidth) return raw;
+  let out = raw;
+  while (out.length > 1 && ctx.measureText(`${out}…`).width > maxWidth) out = out.slice(0, -1);
+  return `${out}…`;
+}
+
+async function renderHuntExportCanvas(hunt, summary) {
+  await document.fonts.ready;
+  const W = 1200;
+  const H = 675;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas_unavailable');
+
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#0B1210');
+  bg.addColorStop(0.55, '#050806');
+  bg.addColorStop(1, '#020403');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(0, 220, 110, 0.22)';
+  ctx.lineWidth = 2;
+  canvasRoundRect(ctx, 18, 18, W - 36, H - 36, 22);
+  ctx.stroke();
+
+  const glow = ctx.createRadialGradient(W * 0.82, H * 0.12, 10, W * 0.82, H * 0.12, 320);
+  glow.addColorStop(0, 'rgba(0, 220, 110, 0.14)');
+  glow.addColorStop(1, 'rgba(0, 220, 110, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  let logoHugo = null;
+  let logo19 = null;
+  try {
+    [logoHugo, logo19] = await Promise.all([
+      loadExportImageAsset('./assets/logo-hugotaslot.jpg'),
+      loadExportImageAsset('./assets/19enplein-logo.png'),
+    ]);
+  } catch (_) {}
+
+  const pad = 52;
+  let y = 54;
+  if (logoHugo && logo19) {
+    const ls = 42;
+    ctx.drawImage(logoHugo, pad, y - 8, ls, ls);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '600 22px Rajdhani, sans-serif';
+    ctx.fillText('×', pad + ls + 10, y + 24);
+    ctx.drawImage(logo19, pad + ls + 34, y - 4, ls + 8, ls);
+    y += 52;
+  }
+
+  ctx.fillStyle = '#00DC6E';
+  ctx.font = '700 13px "Share Tech Mono", monospace';
+  ctx.fillText('HUGOTASLOT × 19ENPLEIN · BONUS HUNT RECAP', pad, y);
+  y += 34;
+
+  ctx.fillStyle = '#FFC93C';
+  ctx.font = '800 46px Rajdhani, sans-serif';
+  const huntTitle = truncateCanvasText(ctx, hunt.name || 'Mon Hunt', W - pad * 2);
+  ctx.fillText(huntTitle, pad, y);
+  y += 24;
+
+  ctx.fillStyle = 'rgba(237,238,242,0.55)';
+  ctx.font = '500 16px Rajdhani, sans-serif';
+  ctx.fillText(`${summary.bonusCount} bonus · ${summary.openedCount} ouverts · ${summary.casinoLabel}`, pad, y + 18);
+  y += 52;
+
+  const cur = summary.currency;
+  const kpis = [
+    { label: 'PROFIT', value: `${summary.profit >= 0 ? '+' : ''}${fmt(summary.profit, cur)}`, color: summary.profit >= 0 ? '#00DC6E' : '#E07A8C' },
+    { label: 'SOLDE DÉPART', value: fmt(summary.startBalance, cur), color: '#FFC93C' },
+    { label: 'GAINS TOTAUX', value: fmt(summary.totalWin, cur), color: '#EDEEF2' },
+    { label: 'BE MOYEN', value: summary.beAvg > 0 ? `${summary.beAvg.toFixed(4).replace('.', ',')}×` : '—', color: '#FFC93C' },
+  ];
+  const gap = 14;
+  const boxW = (W - pad * 2 - gap * 3) / 4;
+  const boxH = 92;
+  kpis.forEach((k, i) => {
+    const x = pad + i * (boxW + gap);
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    canvasRoundRect(ctx, x, y, boxW, boxH, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    canvasRoundRect(ctx, x, y, boxW, boxH, 12);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(237,238,242,0.45)';
+    ctx.font = '600 11px "Share Tech Mono", monospace';
+    ctx.fillText(k.label, x + 14, y + 24);
+    ctx.fillStyle = k.color;
+    ctx.font = '800 28px Rajdhani, sans-serif';
+    ctx.fillText(truncateCanvasText(ctx, k.value, boxW - 28), x + 14, y + 58);
+  });
+  y += boxH + 28;
+
+  ctx.fillStyle = '#00DC6E';
+  ctx.font = '700 13px "Share Tech Mono", monospace';
+  ctx.fillText('TOP BONUS', pad, y);
+  y += 22;
+
+  const rowH = 46;
+  const rows = summary.topBonuses.length ? summary.topBonuses : [{ name: 'Aucun bonus ouvert pour l’instant', provider: '', win: 0, mult: 0 }];
+  rows.forEach((b, i) => {
+    const ry = y + i * (rowH + 8);
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)';
+    canvasRoundRect(ctx, pad, ry, W - pad * 2, rowH, 10);
+    ctx.fill();
+    ctx.fillStyle = '#EDEEF2';
+    ctx.font = '700 20px Rajdhani, sans-serif';
+    const slotLine = b.provider ? `${b.name} · ${b.provider}` : b.name;
+    ctx.fillText(truncateCanvasText(ctx, slotLine, W - pad * 2 - 260), pad + 14, ry + 29);
+    if (b.win > 0) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#00DC6E';
+      ctx.font = '700 18px "Share Tech Mono", monospace';
+      ctx.fillText(fmt(b.win, cur), W - pad - 14, ry + 22);
+      ctx.fillStyle = 'rgba(237,238,242,0.45)';
+      ctx.font = '500 12px "Share Tech Mono", monospace';
+      ctx.fillText(`×${Number(b.mult || 0).toFixed(2)}`, W - pad - 14, ry + 38);
+      ctx.textAlign = 'left';
+    }
+  });
+
+  ctx.fillStyle = 'rgba(237,238,242,0.35)';
+  ctx.font = '500 12px "Share Tech Mono", monospace';
+  const dateStr = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  ctx.fillText(`hugotaslot.fr · ${dateStr}`, pad, H - 42);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error('png_export_failed'));
+      else resolve(blob);
+    }, 'image/png');
+  });
+}
+
+async function exportActiveHuntImage(opts = {}) {
+  const hunt = activeHunt();
+  if (!hunt) {
+    showToast('Sélectionne un hunt à exporter', 'error');
+    return;
+  }
+  const summary = getHuntExportSummary(hunt);
+  if (!summary.bonusCount) {
+    showToast('Ajoute au moins un bonus avant l’export image', 'error');
+    return;
+  }
+  try {
+    showToast('Génération de l’image…', 'info', 1200);
+    const blob = await renderHuntExportCanvas(hunt, summary);
+    const safe = String(hunt.name || 'hunt').replace(/[^a-z0-9_-]+/gi, '_');
+    const filename = `${safe}_recap_${new Date().toISOString().slice(0, 10)}.png`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (opts.copyClipboard !== false && navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        showToast('Image téléchargée et copiée (presse-papiers)', 'success', 2800);
+        return;
+      } catch (_) {}
+    }
+    showToast('Image récap exportée', 'success', 2200);
+  } catch (e) {
+    bhWarn('exportActiveHuntImage', e);
+    showToast('Export image impossible', 'error', 2600);
+  }
+}
+
+function buildHuntExportPrintHtml(hunt, summary) {
+  const cur = summary.currency;
+  const bonuses = Array.isArray(hunt?.bonuses) ? hunt.bonuses : [];
+  const dateStr = new Date(hunt?.createdAt || Date.now()).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const printDate = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const profitColor = summary.profit >= 0 ? '#0a7a42' : '#b33a52';
+  const rows = bonuses.map((b, i) => {
+    const stake = Number(b.stake || 0);
+    const winRaw = b?.win;
+    const opened = winRaw !== null && winRaw !== undefined && !Number.isNaN(Number(winRaw));
+    const win = opened ? Number(winRaw || 0) : null;
+    const mult = opened && stake > 0 ? win / stake : null;
+    const status = opened ? 'Ouvert' : 'À ouvrir';
+    return `<tr>
+      <td>${i + 1}</td>
+      <td>${escapeHtml(String(b.slotName || 'Slot').trim() || 'Slot')}</td>
+      <td>${escapeHtml(String(b.slotProvider || '').trim() || '—')}</td>
+      <td class="num">${fmt(stake, cur)}</td>
+      <td class="num">${opened ? fmt(win, cur) : '—'}</td>
+      <td class="num">${mult !== null ? `×${mult.toFixed(2)}` : '—'}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+  const topRows = (summary.topBonuses || []).map((b) => {
+    const slotLine = b.provider ? `${b.name} · ${b.provider}` : b.name;
+    return `<li><strong>${escapeHtml(slotLine)}</strong> — ${fmt(b.win, cur)}${b.mult > 0 ? ` (×${Number(b.mult).toFixed(2)})` : ''}</li>`;
+  }).join('');
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(hunt.name || 'Hunt')} — récap</title>
+  <style>
+    @page { size: A4 portrait; margin: 14mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Segoe UI", Arial, sans-serif; color: #111; margin: 0; padding: 0; font-size: 12px; }
+    .wrap { max-width: 780px; margin: 0 auto; }
+    h1 { margin: 0 0 4px; font-size: 26px; color: #0a7a42; }
+    .sub { color: #555; margin-bottom: 18px; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+    .kpi { border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; background: #fafafa; }
+    .kpi label { display: block; font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase; color: #666; margin-bottom: 4px; }
+    .kpi strong { font-size: 18px; }
+    .section { margin-top: 18px; }
+    .section h2 { font-size: 14px; margin: 0 0 8px; color: #0a7a42; text-transform: uppercase; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #f0f0f0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    ul { margin: 0; padding-left: 18px; }
+    .foot { margin-top: 22px; padding-top: 10px; border-top: 1px solid #ddd; color: #666; font-size: 10px; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>${escapeHtml(hunt.name || 'Mon Hunt')}</h1>
+    <div class="sub">HugoTaSlot × 19EnPlein · Bonus Hunt · créé le ${escapeHtml(dateStr)} · ${escapeHtml(summary.casinoLabel)} · ${summary.bonusCount} bonus (${summary.openedCount} ouverts)</div>
+    <div class="kpis">
+      <div class="kpi"><label>Profit</label><strong style="color:${profitColor}">${summary.profit >= 0 ? '+' : ''}${escapeHtml(fmt(summary.profit, cur))}</strong></div>
+      <div class="kpi"><label>Solde départ</label><strong>${escapeHtml(fmt(summary.startBalance, cur))}</strong></div>
+      <div class="kpi"><label>Gains totaux</label><strong>${escapeHtml(fmt(summary.totalWin, cur))}</strong></div>
+      <div class="kpi"><label>BE moyen</label><strong>${summary.beAvg > 0 ? `${summary.beAvg.toFixed(4).replace('.', ',')}×` : '—'}</strong></div>
+    </div>
+    ${topRows ? `<div class="section"><h2>Top bonus</h2><ul>${topRows}</ul></div>` : ''}
+    <div class="section">
+      <h2>Détail des bonus</h2>
+      <table>
+        <thead><tr><th>#</th><th>Slot</th><th>Provider</th><th>Mise</th><th>Gain</th><th>Multi</th><th>Statut</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="7">Aucun bonus</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="foot">hugotaslot.fr · exporté le ${escapeHtml(printDate)} · document d’archivage / impression</div>
+  </div>
+</body>
+</html>`;
+}
+
+function exportActiveHuntPdf() {
+  const hunt = activeHunt();
+  if (!hunt) {
+    showToast('Sélectionne un hunt à exporter', 'error');
+    return;
+  }
+  const summary = getHuntExportSummary(hunt);
+  if (!summary.bonusCount) {
+    showToast('Ajoute au moins un bonus avant l’export PDF', 'error');
+    return;
+  }
+  const html = buildHuntExportPrintHtml(hunt, summary);
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    iframe.remove();
+    showToast('Export PDF impossible', 'error');
+    return;
+  }
+  doc.open();
+  doc.write(html);
+  doc.close();
+  const runPrint = () => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      showToast('Dialogue d’impression ouvert — choisis « Enregistrer en PDF »', 'success', 3200);
+    } catch (e) {
+      bhWarn('exportActiveHuntPdf', e);
+      showToast('Export PDF impossible', 'error');
+    } finally {
+      setTimeout(() => iframe.remove(), 1500);
+    }
+  };
+  if (iframe.contentDocument?.readyState === 'complete') runPrint();
+  else iframe.onload = runPrint;
+}
+
+let publicHuntPublishTimer = null;
+let publicHuntPublishInFlight = false;
+let publicHuntPublishQueued = false;
+
+function buildPublicHuntLivePayload(hunt) {
+  const summary = getHuntExportSummary(hunt);
+  return {
+    format: 'hugotaslot-live-v1',
+    updatedAt: Date.now(),
+    hunt: {
+      name: hunt.name,
+      currency: hunt.currency,
+      startBalance: hunt.startBalance,
+      startBalanceEUR: hunt.startBalanceEUR,
+      casino: hunt.casino,
+      bonuses: (hunt.bonuses || []).map((b) => ({
+        slotName: b.slotName,
+        slotProvider: b.slotProvider,
+        slotImage: b.slotImage,
+        stake: b.stake,
+        win: b.win,
+        bonusType: b.bonusType,
+      })),
+    },
+    stats: {
+      currency: summary.currency,
+      startBalance: summary.startBalance,
+      totalWin: summary.totalWin,
+      profit: summary.profit,
+      beAvg: summary.beAvg,
+      bonusCount: summary.bonusCount,
+      openedCount: summary.openedCount,
+      casinoLabel: summary.casinoLabel,
+    },
+  };
+}
+
+function getPublicHuntLiveUrl(slug) {
+  const s = String(slug || '').trim().toLowerCase();
+  if (!s) return '';
+  try { return `${location.origin}/h/${s}`; } catch (_) { return `https://hugotaslot.fr/h/${s}`; }
+}
+
+function updatePublicLiveButtons(hunt) {
+  const stopBtn = document.getElementById('btn-stop-live-hunt');
+  const liveBtn = document.getElementById('btn-live-hunt');
+  const on = !!(hunt && hunt.publicShareEnabled && hunt.publicShareSlug);
+  if (stopBtn) stopBtn.style.display = on ? '' : 'none';
+  if (liveBtn) liveBtn.classList.toggle('live-active', on);
+}
+
+async function publishActiveHuntLiveShareNow() {
+  const hunt = activeHunt();
+  if (!hunt || !isCloudUser()) return null;
+  if (!hunt.publicShareEnabled && !hunt.publicShareSlug) return null;
+  const c = getAuthClient();
+  if (!c) return null;
+  const payload = buildPublicHuntLivePayload(hunt);
+  const { data, error } = await cloudCall('sync', () => c.rpc('publish_public_hunt_share', {
+    p_hunt_id: String(hunt.id),
+    p_payload: payload,
+  }), { retries: 1, timeoutMs: 12000, delayMs: 400, quiet: true });
+  if (error) throw error;
+  const slug = String(data || hunt.publicShareSlug || '').trim().toLowerCase();
+  if (slug) {
+    hunt.publicShareSlug = slug;
+    hunt.publicShareEnabled = true;
+    writeLocalCache();
+    updatePublicLiveButtons(hunt);
+  }
+  return slug;
+}
+
+function schedulePublicHuntLivePublish() {
+  if (!isCloudUser()) return;
+  const hunt = activeHunt();
+  if (!hunt || !hunt.publicShareEnabled) return;
+  if (publicHuntPublishTimer) clearTimeout(publicHuntPublishTimer);
+  publicHuntPublishTimer = setTimeout(async () => {
+    publicHuntPublishTimer = null;
+    if (publicHuntPublishInFlight) {
+      publicHuntPublishQueued = true;
+      return;
+    }
+    publicHuntPublishInFlight = true;
+    try {
+      await publishActiveHuntLiveShareNow();
+    } catch (e) {
+      pushRuntimeLog('warn', `public_hunt_publish: ${String(e?.message || e)}`);
+    } finally {
+      publicHuntPublishInFlight = false;
+      if (publicHuntPublishQueued) {
+        publicHuntPublishQueued = false;
+        schedulePublicHuntLivePublish();
+      }
+    }
+  }, 900);
+}
+
+async function enablePublicHuntLiveLink() {
+  if (!requireWriteAccess('Lien live bloqué')) return;
+  if (!isCloudUser()) {
+    showToast('Connecte-toi pour un lien public live', 'error', 3000);
+    showAuth();
+    return;
+  }
+  const hunt = activeHunt();
+  if (!hunt) {
+    showToast('Sélectionne un hunt', 'error');
+    return;
+  }
+  if (!(hunt.bonuses || []).length) {
+    showToast('Ajoute au moins un bonus avant le lien live', 'error', 2600);
+    return;
+  }
+  hunt.publicShareEnabled = true;
+  try {
+    const slug = await publishActiveHuntLiveShareNow();
+    if (!slug) throw new Error('publish_failed');
+    const url = getPublicHuntLiveUrl(slug);
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
+    } catch (_) {}
+    showToast(`Lien live actif (maj auto pendant le farm)`, 'success', 3200);
+    updatePublicLiveButtons(hunt);
+  } catch (e) {
+    hunt.publicShareEnabled = false;
+    bhWarn('enablePublicHuntLiveLink', e);
+    const msg = String(e?.message || e || '').toLowerCase();
+    if (msg.includes('publish_public_hunt_share') || msg.includes('public_hunt_shares') || msg.includes('does not exist')) {
+      showToast('Applique la migration Supabase public_hunt_shares', 'error', 4500);
+    } else {
+      showToast('Impossible d’activer le lien live', 'error', 2800);
+    }
+  }
+}
+
+async function disablePublicHuntLiveLink() {
+  const hunt = activeHunt();
+  if (!hunt || !isCloudUser()) return;
+  const c = getAuthClient();
+  if (c) {
+    try {
+      await cloudCall('sync', () => c.rpc('disable_public_hunt_share', { p_hunt_id: String(hunt.id) }), { retries: 1, timeoutMs: 10000, quiet: true });
+    } catch (_) {}
+  }
+  hunt.publicShareEnabled = false;
+  hunt.publicShareSlug = '';
+  writeLocalCache();
+  updatePublicLiveButtons(hunt);
+  showToast('Lien live désactivé', 'info', 2200);
+}
+
+async function copyPublicHuntLiveLink() {
+  const hunt = activeHunt();
+  if (hunt?.publicShareEnabled && hunt?.publicShareSlug) {
+    const url = getPublicHuntLiveUrl(hunt.publicShareSlug);
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
+      showToast('Lien live copié', 'success', 1800);
+    } catch (_) {
+      showToast(url, 'info', 5000);
+    }
+    return;
+  }
+  await enablePublicHuntLiveLink();
 }
 
 function encodeSharePayload(payload) {
@@ -2670,6 +3322,14 @@ function importHuntFile(file) {
 }
 
 document.getElementById('btn-export-hunt').addEventListener('click', exportActiveHunt);
+const btnExportHuntImage = document.getElementById('btn-export-hunt-image');
+if (btnExportHuntImage) btnExportHuntImage.addEventListener('click', () => { exportActiveHuntImage().catch(() => {}); });
+const btnExportHuntPdf = document.getElementById('btn-export-hunt-pdf');
+if (btnExportHuntPdf) btnExportHuntPdf.addEventListener('click', () => { exportActiveHuntPdf(); });
+const btnLiveHunt = document.getElementById('btn-live-hunt');
+if (btnLiveHunt) btnLiveHunt.addEventListener('click', () => { copyPublicHuntLiveLink().catch(() => {}); });
+const btnStopLiveHunt = document.getElementById('btn-stop-live-hunt');
+if (btnStopLiveHunt) btnStopLiveHunt.addEventListener('click', () => { disablePublicHuntLiveLink().catch(() => {}); });
 document.getElementById('btn-import-hunt').addEventListener('click', () => document.getElementById('hunt-import-input').click());
 document.getElementById('btn-share-hunt').addEventListener('click', exportShareCode);
 document.getElementById('btn-import-share').addEventListener('click', importShareCode);
@@ -2751,9 +3411,13 @@ function selectHunt(id, opts = {}) {
   if (!opts.skipList) renderHuntList();
   refreshCurrencyInline();
   if (!opts.skipWorkspace) scheduleHuntUI({ loadCatalog: !state.slots?.length, force: true });
+  if (typeof maybeOpenPendingSlotPrefill === 'function') maybeOpenPendingSlotPrefill();
   document.getElementById('no-hunt-selected').style.display = 'none';
   document.getElementById('hunt-workspace').classList.remove('hidden');
   document.getElementById('hunt-workspace').style.display = 'flex';
+  document.body.classList.remove('hunt-sessions-open');
+  const sessionsBtn = document.getElementById('btn-hunt-sessions-toggle');
+  if (sessionsBtn) sessionsBtn.setAttribute('aria-expanded', 'false');
   const openBtn = document.getElementById('btn-open-hunt');
   if (openBtn) openBtn.disabled = false;
 }
@@ -2806,7 +3470,7 @@ function showNewHuntModal() {
   populateCurrencySelect(document.getElementById('new-hunt-currency'), 'EUR');
   const prefs = getUiPrefs();
   populateCasinoSelect(document.getElementById('new-hunt-casino'), getCasinoKey(prefs.defaultCasino || 'gamdom'));
-  populateTemplateSelect(document.getElementById('new-hunt-template'));
+  renderHuntTemplateGrid();
   updateNewHuntCurrencyHint();
   setTimeout(() => document.getElementById('new-hunt-name-input').focus(), 50);
 }
@@ -2820,16 +3484,6 @@ document.getElementById('hunt-filter-q').addEventListener('input', (e) => {
   state.huntListView.q = String(e.target.value || '');
   clearTimeout(huntListFilterDebounce);
   huntListFilterDebounce = setTimeout(() => renderHuntList(), 120);
-});
-document.getElementById('new-hunt-template').addEventListener('change', (e) => {
-  const idx = Number(e.target.value);
-  const tpl = Number.isFinite(idx) && idx >= 0 ? getHuntTemplates()[idx] : null;
-  if (!tpl) return;
-  const balEl = document.getElementById('new-hunt-bal-input');
-  if (balEl) balEl.value = String(Number(tpl.startBalance || 100));
-  populateCurrencySelect(document.getElementById('new-hunt-currency'), tpl.currency || 'EUR');
-  populateCasinoSelect(document.getElementById('new-hunt-casino'), tpl.casino || 'gamdom');
-  updateNewHuntCurrencyHint();
 });
 
 function updateNewHuntCurrencyHint() {
@@ -2848,8 +3502,7 @@ function createNewHunt() {
   const bal = parseFloat(document.getElementById('new-hunt-bal-input').value) || 0;
   const currency = document.getElementById('new-hunt-currency').value || 'EUR';
   const casino = getCasinoKey(document.getElementById('new-hunt-casino')?.value || 'gamdom');
-  const templateIdx = Number(document.getElementById('new-hunt-template')?.value ?? -1);
-  const tpl = Number.isFinite(templateIdx) && templateIdx >= 0 ? getHuntTemplates()[templateIdx] : null;
+  const tpl = getSelectedNewHuntTemplate();
   const finalBal = tpl ? Number(tpl.startBalance || bal || 100) : bal;
   if (!Number.isFinite(finalBal) || finalBal <= 0) { showToast('Balance de départ invalide', 'error'); return; }
   const hunt = {
@@ -3090,6 +3743,7 @@ function renderHuntWorkspace(force = false) {
   updateHeaderStats(hunt);
   renderBonusList(hunt);
   document.getElementById('tab-bonus-count').textContent = hunt.bonuses.length;
+  updatePublicLiveButtons(hunt);
 
   // refresh grid indicators
   if (document.getElementById('slots-grid').children.length > 0) {
@@ -3113,10 +3767,13 @@ function updateHeaderStats(hunt) {
     ['stat-count','stat-total-win','stat-total-money','stat-profit','stat-be-avg'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
-      el.textContent = '—'; el.className = 'stat-value';
+      el.textContent = '—';
+      if (el.classList.contains('stat-value')) el.className = 'stat-value';
     });
     const hintEl = document.getElementById('stat-profit-hint');
     if (hintEl) hintEl.textContent = 'Ajoute des bonus pour lancer le hunt.';
+    const subEl = document.getElementById('stat-bonus-sub');
+    if (subEl) subEl.textContent = '0 ouverts';
     return;
   }
   const { bonuses } = hunt;
@@ -3125,22 +3782,31 @@ function updateHeaderStats(hunt) {
   const won = bonuses.filter(b => b.win !== null && !isNaN(Number(b.win)));
   const totalWin = won.reduce((s, b) => s + Number(b.win || 0), 0);
   const profit = totalWin - startBalance;
+  const openedCount = bonuses.filter(b => b.win !== null).length;
 
   const countEl = document.getElementById('stat-count');
   if (countEl) countEl.textContent = bonuses.length;
+  const subEl = document.getElementById('stat-bonus-sub');
+  if (subEl) subEl.textContent = `${openedCount}/${bonuses.length} ouverts`;
   const winEl = document.getElementById('stat-total-win');
   if (winEl) winEl.textContent = fmt(totalWin);
   const totalMoneyEl = document.getElementById('stat-total-money');
-  totalMoneyEl.textContent = fmt(startBalance);
-  totalMoneyEl.className = 'stat-value gold';
+  if (totalMoneyEl) totalMoneyEl.textContent = fmt(startBalance);
 
   const profEl = document.getElementById('stat-profit');
-  if (profit >= 0) { profEl.textContent = '+' + fmt(profit); profEl.className = 'stat-value green'; }
-  else { profEl.textContent = fmt(profit); profEl.className = 'stat-value red'; }
+  if (profEl) {
+    if (profit >= 0) { profEl.textContent = '+' + fmt(profit); profEl.className = 'stat-value green'; }
+    else { profEl.textContent = fmt(profit); profEl.className = 'stat-value red'; }
+  }
   const hintEl = document.getElementById('stat-profit-hint');
-  if (hintEl) hintEl.textContent = getProfitMotivation(profit, startBalance, totalWin);
+  if (hintEl) {
+    hintEl.textContent = bonuses.length
+      ? `${fmt(startBalance)} départ · ${fmt(totalWin)} gains`
+      : 'Ajoute des bonus pour lancer le hunt.';
+  }
 
   const beEl = document.getElementById('stat-be-avg');
+  if (!beEl) return;
   if (bonuses.length === 0 || totalStake <= 0) { beEl.textContent = '—'; beEl.className = 'stat-value'; }
   else {
     const avgBe = Number(hunt.startBalance || 0) / totalStake;
@@ -3187,7 +3853,7 @@ function renderBonusList(hunt) {
     return;
   }
   let shown = hunt.bonuses.map((bonus, i) => ({ bonus, i }));
-  const { status, type, sort, q, provider, minStake, maxStake } = state.bonusView;
+  const { status, type, sort, q, provider, minStake, maxStake, winFilter } = state.bonusView;
   const providerFilterEl = document.getElementById('bonus-provider-filter');
   if (providerFilterEl) {
     const providers = [...new Set((hunt.bonuses || []).map((b) => String(b.slotProvider || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
@@ -3203,8 +3869,9 @@ function renderBonusList(hunt) {
   }
   if (status === 'pending') shown = shown.filter(x => x.bonus.win === null);
   if (status === 'opened') shown = shown.filter(x => x.bonus.win !== null);
-  if (status === 'positive') shown = shown.filter(x => Number(x.bonus.win || 0) > 0);
-  if (status === 'negative') shown = shown.filter(x => x.bonus.win !== null && Number(x.bonus.win || 0) <= 0);
+  const wf = winFilter || (status === 'positive' || status === 'negative' ? status : 'all');
+  if (wf === 'positive') shown = shown.filter(x => Number(x.bonus.win || 0) > 0);
+  if (wf === 'negative') shown = shown.filter(x => x.bonus.win !== null && Number(x.bonus.win || 0) <= 0);
   if (type !== 'all') shown = shown.filter(x => normalizeBonusType(x.bonus.bonusType) === type);
   if (provider) shown = shown.filter(({ bonus }) => String(bonus.slotProvider || '').toLowerCase() === provider);
   const minStakeNum = Number(String(minStake || '').replace(',', '.'));
@@ -3508,11 +4175,9 @@ if (_streamerToggle) {
   _streamerToggle.checked = isStreamerOverlayEnabled();
   _streamerToggle.addEventListener('change', () => {
     setStreamerOverlayEnabled(_streamerToggle.checked);
-    updateOpenerStreamerHud();
+    if (_streamerToggle.checked) void openOrFocusStreamerHud();
+    else updateOpenerStreamerHud();
   });
-  if (_streamerToggle.checked) {
-    try { updateOpenerStreamerHud(); } catch (_) {}
-  }
 }
 
 window.addEventListener('storage', (ev) => {
@@ -3614,6 +4279,7 @@ function ensureStreamerHudPipLeaveListener() {
 }
 
 function closeStreamerHudWin() {
+  hideInlineStreamerHud();
   try {
     const pipApi = window.documentPictureInPicture;
     if (pipApi?.window && !pipApi.window.closed) {
@@ -3626,18 +4292,84 @@ function closeStreamerHudWin() {
     }
     window.__streamerHudWin = null;
   } catch (_) {}
+  window.__streamerHudMode = null;
 }
 
-async function openOrFocusStreamerHud() {
+function isStreamerHudVisible() {
+  try {
+    const pip = window.documentPictureInPicture?.window;
+    if (pip && !pip.closed) return true;
+  } catch (_) {}
+  if (window.__streamerHudWin && !window.__streamerHudWin.closed) return true;
+  const inline = document.getElementById('streamer-hud-inline');
+  return !!(inline && !inline.classList.contains('hidden'));
+}
+
+function ensureInlineStreamerHudShell() {
+  let el = document.getElementById('streamer-hud-inline');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'streamer-hud-inline';
+  el.className = 'streamer-hud-inline hidden';
+  el.innerHTML = `
+    <div class="streamer-hud-inline-head">
+      <span>HUD Stream</span>
+      <div class="streamer-hud-inline-actions">
+        <button type="button" class="streamer-hud-inline-btn" id="streamer-hud-inline-popout" title="Ouvrir dans une fenêtre">Pop-out</button>
+        <button type="button" class="streamer-hud-inline-btn" id="streamer-hud-inline-close" title="Fermer">✕</button>
+      </div>
+    </div>
+    <iframe src="./streamer-hud.html?embed=1" title="HUD Stream HugoTaSlot"></iframe>
+  `;
+  document.body.appendChild(el);
+  el.querySelector('#streamer-hud-inline-close')?.addEventListener('click', () => {
+    setStreamerOverlayEnabled(false);
+    const t = document.getElementById('opener-streamer-toggle');
+    if (t) t.checked = false;
+    closeStreamerHudWin();
+  });
+  el.querySelector('#streamer-hud-inline-popout')?.addEventListener('click', () => {
+    hideInlineStreamerHud();
+    void openOrFocusStreamerHud({ forcePopup: true });
+  });
+  return el;
+}
+
+function showInlineStreamerHud() {
+  const el = ensureInlineStreamerHudShell();
+  el.classList.remove('hidden');
+  window.__streamerHudMode = 'inline';
+}
+
+function hideInlineStreamerHud() {
+  const el = document.getElementById('streamer-hud-inline');
+  if (el) el.classList.add('hidden');
+  if (window.__streamerHudMode === 'inline') window.__streamerHudMode = null;
+}
+
+async function openOrFocusStreamerHud(opts) {
+  opts = opts || {};
   const toggle = document.getElementById('opener-streamer-toggle');
-  if (!toggle?.checked) return;
+  const enabled = opts.force || toggle?.checked || isStreamerOverlayEnabled();
+  if (!enabled) return;
+
+  if (!opts.forcePopup && isStreamerHudVisible()) {
+    if (window.__streamerHudMode === 'inline') showInlineStreamerHud();
+    else if (window.__streamerHudWin && !window.__streamerHudWin.closed) {
+      try { window.__streamerHudWin.focus(); } catch (_) {}
+    }
+    return;
+  }
+
+  if (opts.forcePopup) hideInlineStreamerHud();
 
   const pipApi = window.documentPictureInPicture;
-  if (pipApi?.requestWindow) {
+  if (!opts.forcePopup && pipApi?.requestWindow) {
     try {
       const existing = pipApi.window;
       if (existing && !existing.closed) {
         try { existing.focus(); } catch (_) {}
+        window.__streamerHudMode = 'pip';
         return;
       }
       ensureStreamerHudPipLeaveListener();
@@ -3663,7 +4395,10 @@ async function openOrFocusStreamerHud() {
           if (t) t.checked = false;
           try { localStorage.setItem(STREAMER_OVERLAY_KEY, '0'); } catch (_) {}
         } catch (_) {}
+        window.__streamerHudMode = null;
       });
+      window.__streamerHudMode = 'pip';
+      showToast('HUD épinglé (Picture-in-Picture)', 'success', 2400);
       return;
     } catch (e) {
       bhWarn('Document PiP HUD', e);
@@ -3673,6 +4408,7 @@ async function openOrFocusStreamerHud() {
   try {
     if (window.__streamerHudWin && !window.__streamerHudWin.closed) {
       try { window.__streamerHudWin.focus(); } catch (_) {}
+      window.__streamerHudMode = 'popup';
       return;
     }
     const w = window.open(
@@ -3682,17 +4418,21 @@ async function openOrFocusStreamerHud() {
     );
     if (w) {
       window.__streamerHudWin = w;
-    } else {
-      try {
-        showToast(
-          'HUD bloqué : autorise les popups, ou utilise Chrome / Edge pour la fenêtre « toujours visible » (Picture-in-Picture).',
-          'info',
-          5200
-        );
-      } catch (_) {}
+      window.__streamerHudMode = 'popup';
+      return;
     }
   } catch (e) {
-    bhWarn('openOrFocusStreamerHud', e);
+    bhWarn('openOrFocusStreamerHud popup', e);
+  }
+
+  showInlineStreamerHud();
+  if (!window.__hudInlineToastShown) {
+    window.__hudInlineToastShown = true;
+    showToast(
+      'HUD affiché en panneau intégré (popups bloquées). Utilise Pop-out ou l’URL OBS dans Studio si besoin.',
+      'info',
+      5200
+    );
   }
 }
 
@@ -3709,6 +4449,7 @@ function updateOpenerStreamerHud() {
     closeStreamerHudWin();
     return;
   }
+  if (isStreamerHudVisible()) return;
   void openOrFocusStreamerHud();
 }
 
@@ -3878,10 +4619,11 @@ init().catch((e) => {
 // ─── PAGE NAVIGATION (URL routing) ───
 // Chaque onglet sidebar = une URL propre, gérée via History API.
 // Le serveur (Vercel) rewrite déjà toutes les routes vers index.html, donc
-// un refresh ou un partage de lien direct (/blackjack, /pharaon...) marche.
+// un refresh ou un partage de lien direct (/blackjack, /hunt...) marche.
 const PAGE_TO_SLUG = Object.freeze({
   home: '',
   hunt: 'hunt',
+  studio: 'studio',
   blackjack: 'blackjack',
   mise: 'mise-optimale',
   roue_depot: 'roue-depot',
@@ -3904,6 +4646,7 @@ const SLUG_TO_PAGE = (() => {
 const PAGE_TITLES = Object.freeze({
   home: 'Accueil',
   hunt: 'Bonus Hunt',
+  studio: 'Studio Stream',
   blackjack: 'Tableau Blackjack',
   mise: 'Mise Optimale',
   roue_depot: 'Roue du Dépôt',
@@ -3911,7 +4654,7 @@ const PAGE_TITLES = Object.freeze({
   tournoi: 'Tournoi',
   stats: 'Statistiques',
   jeux: 'Mini Jeux',
-  updates: 'Updates',
+  updates: 'Nouveautés',
   news: 'Actualités',
   review: 'Review',
   admin: 'Admin',
@@ -4097,7 +4840,113 @@ function switchHuntTab(tab, opts) {
   if (!opts.skipTitle) setDocumentTitleForHuntTab(tab);
   if (!opts.skipSidebar && __activePage === 'hunt') syncSidebarActivePage('hunt');
 }
+function syncBonusFilterUiFromState() {
+  const bv = state.bonusView || {};
+  const pairs = [
+    ['bonus-status-filter', bv.status || 'all'],
+    ['bonus-type-filter', bv.type || 'all'],
+    ['bonus-win-filter', bv.winFilter || 'all'],
+    ['bonus-sort', bv.sort || 'order'],
+    ['bonus-search-filter', bv.q || ''],
+    ['bonus-provider-filter', bv.provider || ''],
+    ['bonus-min-stake', bv.minStake || ''],
+    ['bonus-max-stake', bv.maxStake || ''],
+  ];
+  pairs.forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el && String(el.value) !== String(val)) el.value = val;
+  });
+}
+
+function initHuntWorkspaceUiSimplify() {
+  const moreToggle = document.getElementById('btn-hunt-more-toggle');
+  const moreMenu = document.getElementById('hunt-toolbar-menu');
+  const filtersToggle = document.getElementById('btn-hunt-filters-toggle');
+  const filtersAdv = document.getElementById('hunt-filters-advanced');
+
+  if (moreToggle && moreMenu && !moreToggle.dataset.bound) {
+    moreToggle.dataset.bound = '1';
+    moreToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = moreMenu.classList.contains('hidden');
+      moreMenu.classList.toggle('hidden');
+      moreToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+    document.addEventListener('click', (e) => {
+      if (moreMenu.classList.contains('hidden')) return;
+      if (e.target.closest('.hunt-more-wrap')) return;
+      moreMenu.classList.add('hidden');
+      moreToggle.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  if (filtersToggle && filtersAdv && !filtersToggle.dataset.bound) {
+    filtersToggle.dataset.bound = '1';
+    filtersToggle.addEventListener('click', () => {
+      const willOpen = filtersAdv.classList.contains('hidden');
+      filtersAdv.classList.toggle('hidden');
+      filtersToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      filtersToggle.textContent = willOpen ? '− Filtres' : '+ Filtres';
+    });
+  }
+
+  syncBonusFilterUiFromState();
+  initHuntMobileWorkspace();
+}
+
+function setHuntMobileView(view) {
+  const ws = document.getElementById('hunt-workspace');
+  const nav = document.getElementById('hunt-mobile-view');
+  if (!ws) return;
+  const v = view === 'slots' ? 'slots' : 'bonus';
+  ws.dataset.mobileView = v;
+  if (nav) {
+    nav.querySelectorAll('[data-hunt-view]').forEach((btn) => {
+      const on = btn.dataset.huntView === v;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-current', on ? 'true' : 'false');
+    });
+  }
+  try { localStorage.setItem('hm_hunt_mobile_view_v1', v); } catch (_) {}
+}
+
+function initHuntMobileWorkspace() {
+  const nav = document.getElementById('hunt-mobile-view');
+  const ws = document.getElementById('hunt-workspace');
+  if (nav && !nav.dataset.bound) {
+    nav.dataset.bound = '1';
+    nav.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-hunt-view]');
+      if (!btn) return;
+      setHuntMobileView(btn.dataset.huntView);
+    });
+  }
+  if (ws) {
+    let saved = 'bonus';
+    try { saved = localStorage.getItem('hm_hunt_mobile_view_v1') || 'bonus'; } catch (_) {}
+    setHuntMobileView(saved === 'slots' ? 'slots' : 'bonus');
+  }
+
+  const sessionsBtn = document.getElementById('btn-hunt-sessions-toggle');
+  const sessionsPanel = document.getElementById('hunt-hub-sessions');
+  if (sessionsBtn && sessionsPanel && !sessionsBtn.dataset.bound) {
+    sessionsBtn.dataset.bound = '1';
+    sessionsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = document.body.classList.toggle('hunt-sessions-open');
+      sessionsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', (e) => {
+      if (!document.body.classList.contains('hunt-sessions-open')) return;
+      if (e.target.closest('#hunt-hub-sessions') || e.target.closest('#btn-hunt-sessions-toggle')) return;
+      document.body.classList.remove('hunt-sessions-open');
+      sessionsBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+}
+
 function initHuntHubTabs() {
+  initHuntWorkspaceUiSimplify();
   const nav = document.getElementById('hunt-hub-tabs');
   if (!nav || nav.dataset.bound) return;
   nav.dataset.bound = '1';
@@ -4167,10 +5016,19 @@ function switchPage(page, opts) {
     const __renderFn = (function buildPageRender(p) {
       switch (p) {
         case 'blackjack': return () => { if (typeof renderBJTable === 'function') renderBJTable(); };
-        case 'jeux': return () => { if (typeof renderGamesLobby === 'function') renderGamesLobby(); };
+        case 'jeux': return () => {
+          if (typeof renderGamesModeBanner === 'function') renderGamesModeBanner();
+          if (typeof renderWeeklyObjectivesPanel === 'function') renderWeeklyObjectivesPanel();
+          if (typeof renderGamesLobby === 'function') renderGamesLobby();
+        };
         case 'stats': return () => { if (typeof renderStatsPage === 'function') renderStatsPage(); };
         case 'admin': return () => { if (typeof renderAdminPanel === 'function') renderAdminPanel(); };
-        case 'home': return () => { if (typeof renderHomeHubMetrics === 'function') renderHomeHubMetrics(); };
+        case 'home': return () => {
+          if (typeof renderHomeHubMetrics === 'function') renderHomeHubMetrics();
+          if (typeof renderHomeLeaderboard === 'function') renderHomeLeaderboard();
+          if (typeof renderHomeDiscordBanner === 'function') renderHomeDiscordBanner();
+        };
+        case 'studio': return () => { if (typeof renderStudioPage === 'function') renderStudioPage(); };
         case 'updates': return () => {
           if (typeof renderUpdatesPage === 'function') renderUpdatesPage();
           if (typeof runSupabaseHealthCheck === 'function') runSupabaseHealthCheck(false).catch(() => {});
@@ -4260,6 +5118,7 @@ const __PAGE_HTML = {
         </div>
         <span class="home-partner-cta">JOUER SUR GAMDOM →</span>
       </a>
+      <div id="home-discord-banner" class="home-discord-banner" aria-live="polite"></div>
       <div class="home-grid">
         <div class="home-card">
           <div class="home-card-head"><img src="./assets/icon-hunt.svg" class="ui-logo-icon" alt=""><div class="home-card-title">DÉMARRAGE RAPIDE</div></div>
@@ -4283,16 +5142,38 @@ const __PAGE_HTML = {
         <div class="hub-kpi"><div class="hub-kpi-l">PROFIT 30J</div><div class="hub-kpi-v" id="home-kpi-profit-30d">0,00€</div></div>
       </div>
     </div>
+    <div class="mise-section">
+      <div class="mise-section-title">CLASSEMENTS COMMUNAUTÉ</div>
+      <div class="bj-rec" style="margin-bottom:10px;">Tournoi mensuel, points misés aux mini-jeux et streak de drops quotidiens.</div>
+      <div class="home-lb-tabs" id="home-lb-tabs" role="tablist">
+        <button type="button" class="home-lb-tab active" data-lb-tab="tournoi" aria-selected="true">Tournoi</button>
+        <button type="button" class="home-lb-tab" data-lb-tab="wager">Mini-jeux</button>
+        <button type="button" class="home-lb-tab" data-lb-tab="streak">Streak drop</button>
+      </div>
+      <div id="home-leaderboard"><div class="bj-rec">Chargement…</div></div>
+    </div>
+    <div class="home-landing-showcase">
+      <div class="home-showcase-item"><img src="./assets/icon-hunt.svg" alt=""><span>Bonus Hunt live</span></div>
+      <div class="home-showcase-item"><img src="./assets/icon-cards.svg" alt=""><span>Opener + HUD stream</span></div>
+      <div class="home-showcase-item"><img src="./assets/icon-games.svg" alt=""><span>12 mini-jeux</span></div>
+      <div class="home-showcase-item"><img src="./assets/virtual-token.svg" alt=""><span>Drops & streak</span></div>
+    </div>
+    <div class="home-hero-cta-row">
+      <button type="button" class="play-btn home-hero-cta" onclick="showNewHuntModal();switchPage('hunt');">CRÉER MON PREMIER HUNT</button>
+      <button type="button" class="home-cmd-btn" onclick="startOnboarding(true)">GUIDE DÉMARRAGE</button>
+    </div>
     <div class="mise-section home-quick-panel">
       <div class="mise-section-title">COMMANDES RAPIDES</div>
       <div class="home-quick-cmds">
         <button class="play-btn" onclick="showNewHuntModal()">+ NOUVEAU HUNT</button>
         <button class="home-cmd-btn" onclick="switchPage('hunt')">ALLER AU BONUS HUNT</button>
+        <button class="home-cmd-btn" onclick="switchPage('studio')">STUDIO STREAM</button>
+        <button class="home-cmd-btn" onclick="startOnboarding(true)">GUIDE DÉMARRAGE</button>
         <button class="home-cmd-btn" onclick="switchPage('blackjack')">TABLEAU BJ</button>
         <button class="home-cmd-btn" onclick="switchPage('hunt',{huntTab:'mise'})">MISE OPTIMALE</button>
         <button class="home-cmd-btn" onclick="switchPage('hunt',{huntTab:'tournoi'})">TOURNOI</button>
         <button class="home-cmd-btn" onclick="switchPage('jeux')">MINI JEUX</button>
-        <button class="home-cmd-btn" onclick="switchPage('updates')">GROSSES UPDATES</button>
+        <button class="home-cmd-btn" onclick="switchPage('updates')">NOUVEAUTÉS</button>
         <button class="home-cmd-btn" onclick="switchPage('review')">REVIEW / AVIS</button>
         <button class="home-cmd-btn" id="home-admin-btn" onclick="switchPage('admin')" style="display:none;">ADMIN</button>
       </div>
@@ -4320,7 +5201,8 @@ const __PAGE_HTML = {
     </div>
     <div id="admin-panel">
       <div class="mise-section" style="margin-bottom:14px;">
-        <div class="mise-section-title">MAINTENANCE</div>
+        <div class="mise-section-title">MAINTENANCE (serveur Supabase)</div>
+        <div class="bj-rec" style="margin-bottom:8px;">État global pour tous les joueurs — plus de flag localStorage navigateur. Migration : <code>20260704_site_maintenance.sql</code></div>
         <div class="bj-input-row">
           <label class="bj-label" style="display:flex;align-items:center;gap:8px;">
             <input type="checkbox" id="admin-maint-enabled"> Activer maintenance (joueurs en lecture seule)
@@ -4344,7 +5226,14 @@ const __PAGE_HTML = {
           <input class="profile-menu-input" id="admin-ops-webhook" maxlength="360" placeholder="https://...">
         </div>
         <button class="profile-mini-btn primary" onclick="adminSaveOpsAlerts()">Sauvegarder alerting ops</button>
+        <div class="admin-toolbar" style="margin-top:10px;">
+          <button type="button" class="profile-mini-btn" onclick="adminTestOpsWebhook()">Tester le webhook</button>
+          <button type="button" class="profile-mini-btn" onclick="adminFireTestProdError()">Simuler erreur prod</button>
+        </div>
+        <div class="bj-rec" style="margin-top:8px;">Le webhook reçoit les erreurs <code>pushRuntimeLog('error', …)</code> en prod (cooldown 45 s). « Simuler erreur prod » déclenche ce chemin réel.</div>
       </div>
+      <div class="mise-section-title" style="margin-bottom:8px;">DASHBOARD COMMUNAUTÉ</div>
+      <div class="stats-grid" id="admin-dashboard-grid" style="margin-bottom:14px;"></div>
       <div class="stats-grid" id="admin-stats-grid" style="margin-bottom:14px;"></div>
       <div class="mise-section" style="margin-bottom:14px;">
         <div class="mise-section-title">UTILISATEURS</div>
@@ -4359,15 +5248,18 @@ const __PAGE_HTML = {
         <div class="drop-meta" style="margin-bottom:10px;">Le bot poste l'annonce sur Discord dans les 60 secondes et la slot apparaît immédiatement dans la page Actualités.</div>
         <div class="profile-menu-row">
           <label class="profile-menu-label">Nom de la slot (obligatoire)</label>
-          <input type="text" class="profile-menu-input" id="admin-slot-title" maxlength="160" placeholder="Ex. : Sweet Bonanza Super Scatter">
+          <input type="text" class="profile-menu-input" id="admin-slot-title" maxlength="160" placeholder="Ex. : Sweet Bonanza Super Scatter" oninput="syncAdminSlotPreview()">
         </div>
         <div class="profile-menu-row">
           <label class="profile-menu-label">Provider</label>
-          <input type="text" class="profile-menu-input" id="admin-slot-provider" maxlength="80" placeholder="Ex. : Pragmatic Play">
+          <input type="text" class="profile-menu-input" id="admin-slot-provider" maxlength="80" placeholder="Ex. : Pragmatic Play" oninput="syncAdminSlotPreview()">
         </div>
         <div class="profile-menu-row">
           <label class="profile-menu-label">Image (URL)</label>
-          <input type="url" class="profile-menu-input" id="admin-slot-image" maxlength="500" placeholder="https://...">
+          <input type="url" class="profile-menu-input" id="admin-slot-image" maxlength="500" placeholder="https://..." oninput="syncAdminSlotPreview()">
+        </div>
+        <div id="admin-slot-preview-wrap" class="admin-slot-preview-wrap hidden">
+          <img id="admin-slot-preview-img" class="admin-slot-preview-img" alt="Aperçu slot" loading="lazy" referrerpolicy="no-referrer">
         </div>
         <div class="profile-menu-row">
           <label class="profile-menu-label">Lien (review, vidéo, page provider…)</label>
@@ -4378,11 +5270,18 @@ const __PAGE_HTML = {
           <textarea class="profile-menu-input" id="admin-slot-summary" rows="3" maxlength="600" placeholder="Mécanique, RTP, gros multis, premières impressions…" style="min-height:84px;resize:vertical;font-family:inherit;"></textarea>
         </div>
         <div class="bj-rec" id="admin-slot-status" style="margin:6px 0 10px;"></div>
+        <div class="bj-rec" id="admin-slot-prefill-link" style="margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="profile-mini-btn primary" type="button" onclick="adminPostManualSlot()">Publier la slot</button>
+          <button class="profile-mini-btn" type="button" onclick="adminPreviewSlotToHunt()">Tester dans mon hunt</button>
           <button class="profile-mini-btn" type="button" onclick="resetAdminSlotForm()">Vider le formulaire</button>
         </div>
         <div id="admin-recent-slots" style="margin-top:14px;"></div>
+      </div>
+      <div class="mise-section" style="margin-top:14px;">
+        <div class="mise-section-title">VALIDATION TOURNOI</div>
+        <div class="drop-meta" style="margin-bottom:10px;">Entrées en attente de vérification. Valide ou refuse après contrôle du replay / des chiffres.</div>
+        <div id="admin-tournoi-table"></div>
       </div>
       <div class="mise-section" style="margin-top:14px;">
         <div class="mise-section-title">RETOURS BETA (REVIEW)</div>
@@ -4475,10 +5374,12 @@ const __PAGE_HTML = {
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;">
       <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text-muted);letter-spacing:2px;">SOLDE</div>
-      <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;color:var(--gold)" id="lobby-balance">0,00€</div>
+      <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;color:var(--gold-true)" id="lobby-balance">0,00€</div>
     </div>
   </header>
   <div class="page-content">
+    <div id="games-mode-banner" class="games-mode-banner" aria-live="polite"></div>
+    <div id="games-weekly-objectives" class="games-weekly-objectives" aria-live="polite"></div>
     <div class="games-grid" id="games-lobby"></div>
   </div>
 </div>
@@ -4487,12 +5388,26 @@ const __PAGE_HTML = {
 <div class="page-panel" id="page-updates">
   <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
     <div class="hunt-title-area">
-      <div class="hunt-title-main">GROSSES UPDATES</div>
-      <div class="hunt-title-sub">Roadmap Sprint 1, fiabilité production et suivi runtime</div>
+      <div class="hunt-title-main">NOUVEAUTÉS & UPDATES</div>
+      <div class="hunt-title-sub">Changelog produit + suivi technique production</div>
     </div>
   </header>
   <div class="page-content" style="padding:14px;">
+    <div id="updates-changelog"></div>
     <div id="updates-content"></div>
+  </div>
+</div>
+  `,
+  studio: `
+<div class="page-panel" id="page-studio">
+  <header style="height:90px;flex-shrink:0;background:var(--bg-panel);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);padding:0 28px;display:flex;align-items:center;gap:16px;">
+    <div class="hunt-title-area">
+      <div class="hunt-title-main">STUDIO STREAM</div>
+      <div class="hunt-title-sub">Opener, mini-opener, HUD OBS et options d’affichage live</div>
+    </div>
+  </header>
+  <div class="page-content" style="padding:14px;">
+    <div id="studio-content"><div class="bj-rec">Chargement…</div></div>
   </div>
 </div>
   `,
@@ -4545,6 +5460,7 @@ const __PAGE_HTML = {
     </div>
   </header>
   <div class="page-content" style="padding:14px;display:flex;flex-direction:column;gap:14px;">
+    <div id="news-slot-week" class="news-slot-week hidden"></div>
     <div class="drop-box news-box-team">
       <div class="drop-title">Dernières vidéos de la team</div>
       <div class="drop-meta" style="margin-bottom:10px;">Postées automatiquement par le bot Discord depuis la chaîne HugoTaSlot — la team 19EnPlein en action.</div>
@@ -4602,26 +5518,54 @@ const LAZY_PAGE_SCRIPTS = Object.freeze({
   roue_depot:  './scripts/pages/roue-depot.js',
   slot_choix:  './scripts/pages/slot-choix.js',
   jeux:        './scripts/pages/mini-jeux.js',
-  // home, hunt, stats, admin, updates, review, news → pas de lazy (fonctions dans app.js)
+  home:        './scripts/pages/hub-features.js',
+  studio:      './scripts/pages/hub-features.js',
+  stats:       './scripts/pages/stats.js',
+  // updates, review, news, admin, hunt → app.js (extraction progressive)
 });
-const __lazyPageLoaded = new Map(); // page -> Promise<void>
+const __lazyScriptLoaded = new Map(); // absUrl -> Promise<void>
+function resolveLazyScriptUrl(rel) {
+  try { return new URL(rel, document.baseURI || location.href).href; }
+  catch (_) { return String(rel || ''); }
+}
 function loadLazyPageScript(page) {
-  const src = LAZY_PAGE_SCRIPTS[page];
-  if (!src) return Promise.resolve();
-  if (__lazyPageLoaded.has(page)) return __lazyPageLoaded.get(page);
+  const rel = LAZY_PAGE_SCRIPTS[page];
+  if (!rel) return Promise.resolve();
+  const abs = resolveLazyScriptUrl(rel);
+  if (__lazyScriptLoaded.has(abs)) return __lazyScriptLoaded.get(abs);
+  const existing = [...document.scripts].find((el) => {
+    if (!el.src) return false;
+    try { return resolveLazyScriptUrl(el.getAttribute('src') || el.src) === abs; }
+    catch (_) { return false; }
+  });
+  if (existing) {
+    if (!__lazyScriptLoaded.has(abs)) {
+      const p = new Promise((resolve, reject) => {
+        if (existing.dataset.lazyLoaded === '1') { resolve(); return; }
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`lazy page script failed: ${rel}`)), { once: true });
+      });
+      __lazyScriptLoaded.set(abs, p);
+    }
+    return __lazyScriptLoaded.get(abs);
+  }
   const p = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src;
+    s.src = rel;
     s.async = true;
     s.dataset.lazyPage = page;
-    s.addEventListener('load', () => resolve());
+    s.dataset.lazySrc = abs;
+    s.addEventListener('load', () => {
+      s.dataset.lazyLoaded = '1';
+      resolve();
+    });
     s.addEventListener('error', () => {
-      __lazyPageLoaded.delete(page); // permet retry
-      reject(new Error(`lazy page script failed: ${src}`));
+      __lazyScriptLoaded.delete(abs);
+      reject(new Error(`lazy page script failed: ${rel}`));
     });
     document.head.appendChild(s);
   });
-  __lazyPageLoaded.set(page, p);
+  __lazyScriptLoaded.set(abs, p);
   return p;
 }
 
@@ -4649,6 +5593,349 @@ function ensureSlotsLoaded() {
 // ────────────────────────────────────────────────────────────
 const NEWS_CACHE = { videos: null, slots: null, ts: 0 };
 const NEWS_TTL_MS = 60_000;
+
+const INAPP_NOTIFS_KEY = 'hm_inapp_notifs_v1';
+const INAPP_NOTIFS_SEEN_KEY = 'hm_inapp_notifs_seen_v1';
+const TOURNOI_ENTRY_STATES_KEY = 'hm_tournoi_entry_states_v1';
+
+function getInAppNotifs() {
+  try {
+    const list = JSON.parse(localStorage.getItem(INAPP_NOTIFS_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function saveInAppNotifs(list) {
+  try { localStorage.setItem(INAPP_NOTIFS_KEY, JSON.stringify((list || []).slice(0, 40))); } catch (_) {}
+}
+function pushInAppNotif({ type, title, body, actionPage, actionLabel }) {
+  const list = getInAppNotifs();
+  list.unshift({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: type || 'info',
+    title: String(title || ''),
+    body: String(body || ''),
+    actionPage: actionPage || '',
+    actionLabel: actionLabel || '',
+    ts: Date.now(),
+    read: false,
+  });
+  saveInAppNotifs(list);
+  renderNotifBell();
+}
+function getUnreadNotifCount() {
+  return getInAppNotifs().filter((n) => !n.read).length;
+}
+function markAllNotifsRead() {
+  const list = getInAppNotifs().map((n) => ({ ...n, read: true }));
+  saveInAppNotifs(list);
+  renderNotifBell();
+}
+function markNotifRead(id) {
+  const list = getInAppNotifs().map((n) => (n.id === id ? { ...n, read: true } : n));
+  saveInAppNotifs(list);
+  renderNotifBell();
+}
+function getNotifSeenState() {
+  try { return JSON.parse(localStorage.getItem(INAPP_NOTIFS_SEEN_KEY) || '{}'); } catch { return {}; }
+}
+function saveNotifSeenState(st) {
+  try { localStorage.setItem(INAPP_NOTIFS_SEEN_KEY, JSON.stringify(st || {})); } catch (_) {}
+}
+function cacheTournoiEntryState(entryId, verified) {
+  const st = getNotifSeenState();
+  st.tournoi = st.tournoi || {};
+  st.tournoi[String(entryId)] = !!verified;
+  saveNotifSeenState(st);
+}
+function renderNotifBell() {
+  const wrap = document.getElementById('header-notif-wrap');
+  if (!wrap) return;
+  const count = getUnreadNotifCount();
+  wrap.innerHTML = `
+    <button type="button" class="notif-bell-btn" id="notif-bell-btn" aria-expanded="false" aria-label="Notifications${count ? ` (${count})` : ''}">
+      🔔${count ? `<span class="notif-bell-badge">${count > 9 ? '9+' : count}</span>` : ''}
+    </button>
+    <div class="notif-panel hidden" id="notif-panel" role="dialog" aria-label="Notifications">
+      <div class="notif-panel-head">
+        <span>Notifications</span>
+        <button type="button" class="notif-panel-mark" id="notif-mark-read">Tout lu</button>
+      </div>
+      <div class="notif-panel-list" id="notif-panel-list"></div>
+    </div>`;
+  const btn = document.getElementById('notif-bell-btn');
+  const panel = document.getElementById('notif-panel');
+  const listEl = document.getElementById('notif-panel-list');
+  const notifs = getInAppNotifs();
+  if (listEl) {
+    listEl.innerHTML = notifs.length
+      ? notifs.slice(0, 12).map((n) => `
+        <div class="notif-item${n.read ? '' : ' unread'}" data-notif-id="${escapeHtml(n.id)}">
+          <div class="notif-item-title">${escapeHtml(n.title)}</div>
+          <div class="notif-item-body">${escapeHtml(n.body)}</div>
+          ${n.actionPage ? `<button type="button" class="notif-item-action" data-notif-action="${escapeHtml(n.actionPage)}">${escapeHtml(n.actionLabel || 'Voir')}</button>` : ''}
+        </div>`).join('')
+      : '<div class="notif-empty">Aucune notification pour l’instant.</div>';
+  }
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!panel) return;
+      const open = panel.classList.toggle('hidden');
+      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      if (!open) markAllNotifsRead();
+    });
+  }
+  document.getElementById('notif-mark-read')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    markAllNotifsRead();
+  });
+  listEl?.querySelectorAll('[data-notif-action]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const page = el.getAttribute('data-notif-action');
+      if (page === 'news') switchPage('news');
+      else if (page === 'hunt') switchPage('hunt');
+      else if (page === 'jeux') switchPage('jeux');
+      panel?.classList.add('hidden');
+    });
+  });
+}
+function ensureNotifBellInHeader() {
+  const header = document.getElementById('header');
+  if (!header || document.getElementById('header-notif-wrap')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'header-notif-wrap';
+  wrap.className = 'header-notif-wrap';
+  const badge = document.getElementById('profile-badge');
+  if (badge) header.insertBefore(wrap, badge);
+  else header.appendChild(wrap);
+  renderNotifBell();
+}
+async function checkInAppNotifications() {
+  const seen = getNotifSeenState();
+  let changed = false;
+  const c = getAuthClient();
+  if (c) {
+    try {
+      const { data: vids } = await cloudCall('news', () => c.from('youtube_videos').select('video_id,title').order('published_at', { ascending: false }).limit(1), { retries: 0, timeoutMs: 8000, quiet: true });
+      const vid = vids?.[0];
+      if (vid?.video_id && vid.video_id !== seen.lastVideoId) {
+        if (seen.lastVideoId) {
+          pushInAppNotif({ type: 'video', title: 'Nouvelle vidéo', body: String(vid.title || 'HugoTaSlot'), actionPage: 'news', actionLabel: 'Voir actualités' });
+        }
+        seen.lastVideoId = vid.video_id;
+        changed = true;
+      }
+    } catch (_) {}
+    try {
+      const { data: slots } = await cloudCall('news', () => c.from('slot_releases').select('id,title,provider').order('published_at', { ascending: false }).limit(1), { retries: 0, timeoutMs: 8000, quiet: true });
+      const slot = slots?.[0];
+      if (slot?.id && String(slot.id) !== String(seen.lastSlotId)) {
+        if (seen.lastSlotId) {
+          pushInAppNotif({ type: 'slot', title: 'Nouvelle slot', body: `${slot.title || 'Slot'}${slot.provider ? ` · ${slot.provider}` : ''}`, actionPage: 'news', actionLabel: 'Voir actualités' });
+        }
+        seen.lastSlotId = slot.id;
+        changed = true;
+      }
+    } catch (_) {}
+  }
+  if (isCloudUser() && typeof getDailyState === 'function') {
+    const daily = getDailyState();
+    const dayKey = String(typeof getDayIndex === 'function' ? getDayIndex() : '');
+    if (daily?.canClaim && seen.lastDropReminderDay !== dayKey) {
+      pushInAppNotif({ type: 'drop', title: 'Drop quotidien disponible', body: 'Récupère tes points dans le menu profil.', actionPage: 'jeux', actionLabel: 'Mini-jeux' });
+      seen.lastDropReminderDay = dayKey;
+      changed = true;
+    }
+  }
+  if (isCloudUser() && currentUser?.id && c) {
+    try {
+      const { data: entries } = await cloudCall('profile', () => c.from('tournament_entries')
+        .select('id,hunt_name,verified')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(10), { retries: 0, timeoutMs: 9000, quiet: true });
+      seen.tournoi = seen.tournoi || {};
+      (entries || []).forEach((e) => {
+        const id = String(e.id);
+        const prev = seen.tournoi[id];
+        if (prev === false && e.verified) {
+          pushInAppNotif({ type: 'tournoi', title: 'Tournoi validé', body: `${e.hunt_name || 'Ton hunt'} a été vérifié par l’admin.`, actionPage: 'hunt', actionLabel: 'Voir tournoi' });
+        }
+        seen.tournoi[id] = !!e.verified;
+        changed = true;
+      });
+    } catch (_) {}
+  }
+  if (changed) saveNotifSeenState(seen);
+  renderNotifBell();
+}
+
+function renderNewsSlotWeekBanner(slots) {
+  const wrap = document.getElementById('news-slot-week');
+  if (!wrap) return;
+  const pick = typeof pickSlotOfTheWeek === 'function' ? pickSlotOfTheWeek(slots) : (slots?.[0] || null);
+  if (!pick) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
+  window.__newsSlotWeekPick = pick;
+  wrap.classList.remove('hidden');
+  const title = escapeHtml(pick.title || 'Slot');
+  const provider = escapeHtml(pick.provider || '');
+  const img = pick.image && isSafeUrl(pick.image) ? escapeHtml(pick.image) : '';
+  wrap.innerHTML = `
+    <div class="news-slot-week-inner">
+      ${img ? `<img class="news-slot-week-img" src="${img}" alt="${title}" loading="lazy" referrerpolicy="no-referrer">` : ''}
+      <div class="news-slot-week-body">
+        <div class="news-slot-week-kicker">SLOT DE LA SEMAINE</div>
+        <div class="news-slot-week-title">${title}</div>
+        <div class="news-slot-week-meta">${provider || 'Nouveauté communautaire'}</div>
+        <div class="news-slot-week-actions">
+          <button type="button" class="profile-mini-btn primary" onclick="addNewsSlotWeekToHunt()">Ajouter au hunt</button>
+          ${pick.url ? `<a class="profile-mini-btn" href="${escapeHtml(pick.url)}" target="_blank" rel="noopener noreferrer">En savoir plus</a>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+let adminTournoiSelection = new Set();
+
+function adminTournoiToggle(id, checked) {
+  const sid = String(id || '');
+  if (!sid) return;
+  if (checked) adminTournoiSelection.add(sid);
+  else adminTournoiSelection.delete(sid);
+}
+
+function adminTournoiToggleAll(checked) {
+  document.querySelectorAll('.admin-tournoi-cb').forEach((el) => {
+    el.checked = !!checked;
+    adminTournoiToggle(el.value, checked);
+  });
+}
+
+function getAdminTournoiSelectedIds() {
+  return Array.from(adminTournoiSelection);
+}
+
+async function adminBatchModerateTournoi(action) {
+  if (!isCurrentUserAdmin()) return;
+  const ids = getAdminTournoiSelectedIds();
+  if (!ids.length) {
+    showToast('Sélectionne au moins une entrée', 'info', 2200);
+    return;
+  }
+  if (action === 'reject') {
+    const ok = typeof confirm === 'function'
+      ? await confirm(`Refuser ${ids.length} entrée(s) ?`, 'Elles seront retirées du classement en attente.')
+      : true;
+    if (!ok) return;
+  }
+  const c = getAuthClient();
+  if (!c) { showToast('Supabase indisponible', 'error'); return; }
+  try {
+    const { data, error } = await cloudCall('admin', () => c.rpc('admin_moderate_tournament_entries', {
+      p_entry_ids: ids,
+      p_action: action
+    }), { retries: 1, timeoutMs: 15000, delayMs: 400 });
+    if (error) throw error;
+    const n = Number(data?.count || 0);
+    adminTournoiSelection.clear();
+    showToast(
+      action === 'verify' ? `${n} entrée(s) validée(s)` : `${n} entrée(s) refusée(s)`,
+      action === 'verify' ? 'success' : 'info',
+      2800
+    );
+    if (typeof renderAdminPanel === 'function') await renderAdminPanel();
+    if (typeof fetchTournoi === 'function') await fetchTournoi();
+    if (typeof renderTournoiLeaderboard === 'function') renderTournoiLeaderboard();
+  } catch (e) {
+    bhWarn('adminBatchModerateTournoi', e);
+    let done = 0;
+    for (const id of ids) {
+      try {
+        if (action === 'verify' && typeof adminVerifyTournoiEntry === 'function') {
+          await adminVerifyTournoiEntry(id, true);
+          done += 1;
+        } else if (action === 'reject' && typeof adminRejectTournoiEntry === 'function') {
+          await adminRejectTournoiEntry(id);
+          done += 1;
+        }
+      } catch (_) {}
+    }
+    adminTournoiSelection.clear();
+    if (done > 0) {
+      showToast(`${done} entrée(s) traitée(s) (mode secours)`, done === ids.length ? 'success' : 'info', 2800);
+      if (typeof renderAdminPanel === 'function') await renderAdminPanel();
+    } else {
+      showToast(mapAuthError(e) || 'Modération en lot impossible — migration admin_dashboard ?', 'error', 4000);
+    }
+  }
+}
+
+async function adminFetchPendingTournoiEntries() {
+  const c = getAuthClient();
+  if (!c || !isCurrentUserAdmin()) return [];
+  try {
+    const { data, error } = await cloudCall('admin', () => c.from('tournament_entries')
+      .select('id,hunt_name,player_name,gain,mise,multiplier,replay_url,verified,created_at,user_id')
+      .eq('verified', false)
+      .order('created_at', { ascending: false })
+      .limit(40), { retries: 1, timeoutMs: 12000, quiet: true });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    bhWarn('adminFetchPendingTournoiEntries', e);
+    return [];
+  }
+}
+
+async function renderAdminTournoiTable() {
+  const wrap = document.getElementById('admin-tournoi-table');
+  if (!wrap) return;
+  if (!isCurrentUserAdmin() || !currentUser?.cloud) {
+    wrap.innerHTML = '<div class="bj-rec">Réservé aux admins cloud.</div>';
+    return;
+  }
+  wrap.innerHTML = '<div class="bj-rec">Chargement des soumissions…</div>';
+  const rows = await adminFetchPendingTournoiEntries();
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="bj-rec">Aucune entrée en attente de validation.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="admin-tournoi-batch">
+      <label class="admin-tournoi-select-all"><input type="checkbox" onchange="adminTournoiToggleAll(this.checked)"> Tout</label>
+      <button type="button" class="profile-mini-btn primary" onclick="adminBatchModerateTournoi('verify')">Valider la sélection</button>
+      <button type="button" class="profile-mini-btn danger" onclick="adminBatchModerateTournoi('reject')">Refuser la sélection</button>
+      <span class="bj-rec">${rows.length} en attente</span>
+    </div>
+    <div class="table-wrap">
+      <table class="admin-tournoi-table">
+        <thead><tr>
+          <th></th><th>Date</th><th>Joueur</th><th>Hunt</th><th>Gain</th><th>Multi</th><th>Replay</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${rows.map((r) => {
+          const rid = String(r.id);
+          const checked = adminTournoiSelection.has(rid) ? 'checked' : '';
+          const replay = r.replay_url && isSafeUrl(r.replay_url)
+            ? `<a href="${escapeHtml(r.replay_url)}" target="_blank" rel="noopener noreferrer">Voir</a>`
+            : '<span class="tournoi-replay-missing">Manquant</span>';
+          return `<tr>
+            <td><input type="checkbox" class="admin-tournoi-cb" value="${escapeHtml(rid)}" ${checked} onchange="adminTournoiToggle('${escapeHtml(rid)}', this.checked)"></td>
+            <td>${escapeHtml(new Date(r.created_at).toLocaleDateString('fr-FR'))}</td>
+            <td>${escapeHtml(r.player_name || '—')}</td>
+            <td>${escapeHtml(r.hunt_name || '—')}</td>
+            <td>${fmt(r.gain)} / ${fmt(r.mise)}</td>
+            <td>×${Number(r.multiplier || 0).toFixed(2)}</td>
+            <td>${replay}</td>
+            <td class="admin-tournoi-actions">
+              <button type="button" class="profile-mini-btn primary" onclick="adminVerifyTournoiEntry('${escapeHtml(rid)}', true)">Valider</button>
+              <button type="button" class="profile-mini-btn danger" onclick="adminRejectTournoiEntry('${escapeHtml(rid)}')">Refuser</button>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+}
 
 async function fetchNewsVideos() {
   const c = getAuthClient();
@@ -4758,6 +6045,7 @@ async function renderNewsPage(force = false) {
   if (fresh) {
     vGrid.innerHTML = NEWS_CACHE.videos.length ? NEWS_CACHE.videos.map(renderNewsVideoCard).join('') : `<div class="bj-rec">Aucune vidéo pour l’instant.</div>`;
     sGrid.innerHTML = NEWS_CACHE.slots.length ? NEWS_CACHE.slots.map(renderNewsSlotCard).join('') : `<div class="bj-rec">Aucune sortie publiée pour l’instant.</div>`;
+    renderNewsSlotWeekBanner(NEWS_CACHE.slots);
     return;
   }
   vGrid.innerHTML = `<div class="bj-rec">Chargement…</div>`;
@@ -4772,6 +6060,7 @@ async function renderNewsPage(force = false) {
     NEWS_CACHE.ts = Date.now();
     vGrid.innerHTML = videos.length ? videos.map(renderNewsVideoCard).join('') : `<div class="bj-rec">Aucune vidéo pour l’instant. Le bot Discord les publiera dès qu’une nouvelle vidéo HugoTaSlot sortira.</div>`;
     sGrid.innerHTML = slots.length ? slots.map(renderNewsSlotCard).join('') : `<div class="bj-rec">Aucune sortie publiée. Les admins peuvent en ajouter manuellement depuis le panel admin.</div>`;
+    renderNewsSlotWeekBanner(slots);
   } catch (e) {
     vGrid.innerHTML = `<div class="bj-rec" style="color:#ff9fb1;">Impossible de charger les vidéos. ${escapeHtml(mapAuthError(e))}</div>`;
     sGrid.innerHTML = `<div class="bj-rec" style="color:#ff9fb1;">Impossible de charger les sorties. ${escapeHtml(mapAuthError(e))}</div>`;
@@ -4779,8 +6068,174 @@ async function renderNewsPage(force = false) {
 }
 
 // ────────────────────────────────────────────────────────────
-// LIAISON DISCORD (modal profil)
+// LIAISON DISCORD (modal profil + bandeau accueil)
 // ────────────────────────────────────────────────────────────
+let discordLinkCache = { linked: false, username: '', pendingCode: '', checked: false };
+
+function buildSlotHuntPrefillUrl(slot) {
+  const title = String(slot?.title || slot?.nom || slot?.name || '').trim();
+  if (!title) return '';
+  const params = new URLSearchParams();
+  params.set('slotTitle', title);
+  const provider = String(slot?.provider || '').trim();
+  const image = String(slot?.image || '').trim();
+  const url = String(slot?.url || slot?.gamdomUrl || '').trim();
+  if (provider) params.set('slotProvider', provider);
+  if (image) params.set('slotImage', image);
+  if (url) params.set('slotUrl', url);
+  let origin = 'https://hugotaslot.fr';
+  try { origin = location.origin || origin; } catch (_) {}
+  return `${origin}/hunt?${params.toString()}`;
+}
+
+function getAdminSlotDraft() {
+  return {
+    title: String(document.getElementById('admin-slot-title')?.value || '').trim(),
+    provider: String(document.getElementById('admin-slot-provider')?.value || '').trim(),
+    image: String(document.getElementById('admin-slot-image')?.value || '').trim(),
+    url: String(document.getElementById('admin-slot-url')?.value || '').trim(),
+    summary: String(document.getElementById('admin-slot-summary')?.value || '').trim(),
+  };
+}
+
+function syncAdminSlotPreview() {
+  const wrap = document.getElementById('admin-slot-preview-wrap');
+  const img = document.getElementById('admin-slot-preview-img');
+  const linkEl = document.getElementById('admin-slot-prefill-link');
+  const draft = getAdminSlotDraft();
+  const src = draft.image && typeof isSafeUrl === 'function' && isSafeUrl(draft.image) ? draft.image : '';
+  if (wrap && img) {
+    if (src) {
+      wrap.classList.remove('hidden');
+      img.src = src;
+    } else {
+      wrap.classList.add('hidden');
+      img.removeAttribute('src');
+    }
+  }
+  if (linkEl) {
+    const huntUrl = buildSlotHuntPrefillUrl(draft);
+    if (huntUrl && draft.title) {
+      linkEl.style.display = '';
+      linkEl.innerHTML = `Lien hunt pré-rempli (Discord) : <a href="${escapeHtml(huntUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(huntUrl)}</a>`;
+    } else {
+      linkEl.style.display = 'none';
+      linkEl.innerHTML = '';
+    }
+  }
+}
+
+function adminPreviewSlotToHunt() {
+  const draft = getAdminSlotDraft();
+  if (!draft.title) {
+    showToast('Renseigne le nom de la slot', 'error');
+    return;
+  }
+  if (typeof addNewsSlotToHunt === 'function') {
+    addNewsSlotToHunt({
+      title: draft.title,
+      provider: draft.provider,
+      image: draft.image,
+      url: draft.url,
+    });
+  }
+}
+
+function maybeOpenPendingSlotPrefill() {
+  const slot = window.__pendingSlotPrefill;
+  if (!slot || !state.activeHuntId) return;
+  window.__pendingSlotPrefill = null;
+  if (typeof openAddModal === 'function') {
+    setTimeout(() => openAddModal(slot), 120);
+  }
+}
+
+function consumeSlotPrefillFromUrl() {
+  try {
+    const params = new URLSearchParams(location.search || '');
+    const title = String(params.get('slotTitle') || '').trim();
+    if (!title) return;
+    window.__pendingSlotPrefill = {
+      nom: title,
+      name: title,
+      title,
+      provider: String(params.get('slotProvider') || '').trim(),
+      image: String(params.get('slotImage') || '').trim(),
+      gamdomUrl: String(params.get('slotUrl') || '').trim(),
+      url: String(params.get('slotUrl') || '').trim(),
+    };
+    history.replaceState(history.state || { page: 'hunt' }, '', location.pathname || '/hunt');
+    switchPage('hunt');
+    if (state.activeHuntId) {
+      maybeOpenPendingSlotPrefill();
+    } else {
+      showToast('Choisis ou crée un hunt pour ajouter la slot annoncée', 'info', 3600);
+    }
+  } catch (_) {}
+}
+
+async function renderHomeDiscordBanner() {
+  const wrap = document.getElementById('home-discord-banner');
+  if (!wrap) return;
+  const cmds = [
+    { code: '/hunts', desc: 'Tes hunts liés' },
+    { code: '/leaderboard', desc: 'Top profits communauté' },
+    { code: '/live slug', desc: 'Lien hunt public partagé' },
+    { code: '/slot · /call', desc: 'Catalogue (tous)' },
+  ];
+  const cmdHtml = cmds.map((c) => `<span class="home-discord-cmd"><code>${escapeHtml(c.code)}</code> ${escapeHtml(c.desc)}</span>`).join('');
+  if (!currentUser?.cloud || currentUser?.isGuest) {
+    wrap.innerHTML = `
+      <div class="home-discord-inner">
+        <div class="home-discord-icon" aria-hidden="true">💬</div>
+        <div class="home-discord-body">
+          <div class="home-discord-kicker">BOT DISCORD HUGOTASLOT</div>
+          <div class="home-discord-title">Lie ton compte pour débloquer les commandes hunt</div>
+          <div class="home-discord-cmds">${cmdHtml}</div>
+        </div>
+        <button type="button" class="home-discord-cta" onclick="showAuth()">CONNEXION CLOUD</button>
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="home-discord-inner home-discord-loading"><div class="bj-rec">Chargement liaison Discord…</div></div>`;
+  await refreshDiscordLinkCache().catch(() => {});
+  const linked = discordLinkCache.linked;
+  const who = discordLinkCache.username ? ` (${discordLinkCache.username})` : '';
+  wrap.innerHTML = `
+    <div class="home-discord-inner${linked ? ' is-linked' : ''}">
+      <div class="home-discord-icon" aria-hidden="true">${linked ? '✔' : '💬'}</div>
+      <div class="home-discord-body">
+        <div class="home-discord-kicker">BOT DISCORD HUGOTASLOT</div>
+        <div class="home-discord-title">${linked ? `Compte lié${escapeHtml(who)} — commandes actives` : 'Lie ton Discord en 2 minutes'}</div>
+        <div class="home-discord-cmds">${cmdHtml}</div>
+        ${discordLinkCache.pendingCode ? `<div class="home-discord-pending">Code en attente : <strong>${escapeHtml(discordLinkCache.pendingCode)}</strong> → <code>/link ${escapeHtml(discordLinkCache.pendingCode)}</code></div>` : ''}
+      </div>
+      <button type="button" class="home-discord-cta" onclick="openDiscordLinkModal()">${linked ? 'GÉRER LA LIAISON' : 'LIER MON DISCORD'}</button>
+    </div>`;
+}
+
+async function refreshDiscordLinkCache() {
+  discordLinkCache = { linked: false, username: '', pendingCode: '', checked: true };
+  if (!currentUser?.cloud || currentUser?.isGuest) return discordLinkCache;
+  const c = getAuthClient();
+  if (!c) return discordLinkCache;
+  try {
+    const { data, error } = await cloudCall('discord-link', () => c
+      .from('discord_links')
+      .select('discord_id,discord_username,code,expires_at')
+      .eq('user_id', currentUser.id)
+      .maybeSingle(), { retries: 1, timeoutMs: 8000, delayMs: 300, quiet: true });
+    if (error && error.code !== 'PGRST116') throw error;
+    if (data?.discord_id) {
+      discordLinkCache.linked = true;
+      discordLinkCache.username = data.discord_username || '';
+    } else if (data?.code && data?.expires_at && new Date(data.expires_at).getTime() > Date.now()) {
+      discordLinkCache.pendingCode = data.code;
+    }
+  } catch (_) {}
+  return discordLinkCache;
+}
+
 function generateDiscordLinkRandomCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';
@@ -4827,8 +6282,10 @@ async function loadDiscordLinkStatus() {
     if (error && error.code !== 'PGRST116') throw error;
     if (data?.discord_id) {
       status.innerHTML = `<span style="color:var(--green);">✔ Compte lié à <strong>${escapeHtml(data.discord_username || data.discord_id)}</strong>.</span>`;
-      body.innerHTML = `<div class="bj-rec">Tu peux utiliser <code>/hunts</code>, <code>/leaderboard</code>. Commandes catalogue pour tous : <code>/slot</code>, <code>/call</code>, <code>/lastvideo</code>, <code>/lastslot</code>.</div>`;
+      body.innerHTML = `<div class="bj-rec">Commandes liées : <code>/hunts</code>, <code>/leaderboard</code>, <code>/live slug</code> (hunt public). Pour tous : <code>/slot</code>, <code>/call</code>, <code>/lastvideo</code>, <code>/lastslot</code>.</div>`;
+      discordLinkCache = { linked: true, username: data.discord_username || '', pendingCode: '', checked: true };
       if (unlinkBtn) unlinkBtn.style.display = 'inline-flex';
+      if (typeof renderHomeDiscordBanner === 'function') renderHomeDiscordBanner();
       return;
     }
     if (data?.code && data?.expires_at && new Date(data.expires_at).getTime() > Date.now()) {
@@ -4839,11 +6296,15 @@ async function loadDiscordLinkStatus() {
           <span class="discord-code-value">${escapeHtml(data.code)}</span>
           <button class="profile-mini-btn" type="button" onclick="navigator.clipboard?.writeText('${escapeHtml(data.code)}').then(()=>showToast('Code copié','success'))">Copier</button>
         </div>
-        <div class="bj-rec">Sur Discord, utilise <code>/link code:${escapeHtml(data.code)}</code> dans les 15 minutes.</div>`;
+        <div class="bj-rec">Sur Discord : <code>/link code:${escapeHtml(data.code)}</code> — puis <code>/hunts</code>, <code>/leaderboard</code>, <code>/live slug</code>.</div>`;
+      discordLinkCache = { linked: false, username: '', pendingCode: data.code, checked: true };
+      if (typeof renderHomeDiscordBanner === 'function') renderHomeDiscordBanner();
       return;
     }
     status.innerHTML = `Aucune liaison active. Génère un code à utiliser sur Discord.`;
-    body.innerHTML = '';
+    body.innerHTML = `<div class="bj-rec">Après liaison : <code>/hunts</code>, <code>/leaderboard</code>, <code>/live slug</code> pour les hunts publics partagés.</div>`;
+    discordLinkCache = { linked: false, username: '', pendingCode: '', checked: true };
+    if (typeof renderHomeDiscordBanner === 'function') renderHomeDiscordBanner();
   } catch (e) {
     status.innerHTML = `<span style="color:#ff9fb1;">${escapeHtml(mapAuthError(e))}</span>`;
   }
@@ -4929,6 +6390,7 @@ function resetAdminSlotForm() {
   });
   const st = document.getElementById('admin-slot-status');
   if (st) st.textContent = '';
+  syncAdminSlotPreview();
 }
 
 function slugifyForSlotRelease(title, provider) {
@@ -4963,8 +6425,9 @@ async function adminPostManualSlot() {
       created_by: currentUser.id || null,
       published_at: new Date().toISOString()
     };
-    const { error } = await cloudCall('admin', () => c.from('slot_releases').insert(payload), { retries: 1, timeoutMs: 12000, delayMs: 400, quiet: true });
+    const { data, error } = await cloudCall('admin', () => c.from('slot_releases').insert(payload).select('id').single(), { retries: 1, timeoutMs: 12000, delayMs: 400, quiet: true });
     if (error) throw error;
+    if (data?.id && typeof setSlotOfTheWeek === 'function') setSlotOfTheWeek(data.id);
     if (statusEl) statusEl.innerHTML = `<span style="color:var(--green);">✔ Publiée. Le bot Discord la postera dans les 60 secondes.</span>`;
     showToast('Slot publiée', 'success');
     resetAdminSlotForm();
@@ -4998,6 +6461,7 @@ async function loadAdminRecentSlots() {
         <td style="padding:8px;border-top:1px solid var(--border);">${escapeHtml(s.provider || '—')}</td>
         <td style="padding:8px;border-top:1px solid var(--border);">${s.posted_to_discord_at ? `<span style="color:var(--green);">✔</span>` : `<span style="color:var(--text-dim);">en file</span>`}</td>
         <td style="padding:8px;border-top:1px solid var(--border);">${s.url ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">lien</a>` : '—'}</td>
+        <td style="padding:8px;border-top:1px solid var(--border);"><button type="button" class="profile-mini-btn" onclick="setSlotOfTheWeek('${escapeHtml(s.id)}');showToast('Slot de la semaine définie','success',1800);">Semaine</button></td>
       </tr>
     `).join('');
     wrap.innerHTML = `
@@ -5012,6 +6476,7 @@ async function loadAdminRecentSlots() {
               <th style="text-align:left;padding:8px;">Provider</th>
               <th style="text-align:left;padding:8px;">Discord</th>
               <th style="text-align:left;padding:8px;">URL</th>
+              <th style="text-align:left;padding:8px;">Semaine</th>
             </tr>
           </thead>
           <tbody>${rows || `<tr><td colspan="6" style="padding:10px;color:var(--text-dim);">Aucune slot encore publiée.</td></tr>`}</tbody>
@@ -5059,13 +6524,6 @@ function renderHomeHubMetrics() {
   if (eO) eO.textContent = String(Math.max(1, onlineCount || 1));
   if (e7) { e7.textContent = fmt(p7, 'EUR'); e7.style.color = p7 >= 0 ? 'var(--green)' : 'var(--red)'; }
   if (e30) { e30.textContent = fmt(p30, 'EUR'); e30.style.color = p30 >= 0 ? 'var(--green)' : 'var(--red)'; }
-  const kb = getOpenerKeybinds();
-  const c = document.getElementById('home-opener-key-confirm');
-  const p = document.getElementById('home-opener-key-prev');
-  const n = document.getElementById('home-opener-key-next');
-  if (c) c.value = kb.confirm;
-  if (p) p.value = kb.prev;
-  if (n) n.value = kb.next;
 }
 let globalSearchDebounce = null;
 let globalSearchCloudUsersCache = [];
@@ -5081,6 +6539,13 @@ async function runGlobalSearch() {
   const reviewKeys = ['review', 'avis', 'retour', 'retours', 'feedback', 'beta', 'bêta', 'testeur', 'testeurs', 'suggestion', 'suggestions', 'bug', 'idee', 'idée'];
   if (reviewKeys.some((k) => q === k || (k.length > 3 && (q.includes(k) || k.includes(q))))) {
     rows.push({ t: 'review', label: 'Page REVIEW — avis & bugs (bêta)', action: `switchPage('review')` });
+  }
+  const studioKeys = ['studio', 'stream', 'streamer', 'obs', 'hud', 'opener', 'overlay', 'live'];
+  if (studioKeys.some((k) => q === k || q.includes(k))) {
+    rows.push({ t: 'studio', label: 'Studio Stream — opener, HUD, options live', action: `switchPage('studio')` });
+  }
+  if (q.includes('live') || q.includes('public') || q.includes('spectateur') || q.includes('viewer')) {
+    rows.push({ t: 'live', label: 'Lien public live du hunt (bouton LIEN LIVE)', action: `selectHunt(state.activeHuntId);switchPage('hunt');copyPublicHuntLiveLink()` });
   }
   const newsKeys = ['news', 'actu', 'actus', 'actualité', 'actualités', 'actualite', 'actualites', 'video', 'vidéo', 'youtube', 'slot', 'slots', 'sortie', 'sorties', 'nouveauté', 'nouveautes', 'discord'];
   if (newsKeys.some((k) => q === k || (k.length > 3 && (q.includes(k) || k.includes(q))))) {
@@ -5127,7 +6592,17 @@ async function runGlobalSearch() {
     : `<div class="bj-rec">Aucun résultat pour "${escapeHtml(q)}"</div>`;
 }
 function renderUpdatesPage() {
+  const changelogWrap = document.getElementById('updates-changelog');
   const wrap = document.getElementById('updates-content');
+  if (changelogWrap) {
+    if (typeof renderProductChangelogSection === 'function') {
+      renderProductChangelogSection().catch(() => {
+        if (typeof renderProductChangelogHtml === 'function') changelogWrap.innerHTML = renderProductChangelogHtml();
+      });
+    } else if (typeof renderProductChangelogHtml === 'function') {
+      changelogWrap.innerHTML = renderProductChangelogHtml();
+    }
+  }
   if (!wrap) return;
   const logs = getRuntimeLogs().slice(0, 10);
   const blocks = getActionGuardStatus();
@@ -5444,12 +6919,24 @@ function adminSetMaintenanceMode() {
   const enabledEl = document.getElementById('admin-maint-enabled');
   const msgEl = document.getElementById('admin-maint-msg');
   const enabled = !!(enabledEl && enabledEl.checked);
-  const message = String(msgEl?.value || 'Maintenance en cours. Mode lecture seule temporaire.').trim();
-  saveMaintenanceConfig({ enabled, message });
-  renderMaintenanceBanner();
-  pushLocalAdminAudit('admin_maintenance', `${enabled ? 'ON' : 'OFF'} ${message}`);
-  showToast(enabled ? 'Mode maintenance activé' : 'Mode maintenance désactivé', enabled ? 'info' : 'success');
-  renderAdminPanel();
+  const message = String(msgEl?.value || MAINTENANCE_DEFAULT.message).trim();
+  const c = getAuthClient();
+  if (!c) {
+    showToast('Supabase indisponible — maintenance serveur non modifiable', 'error');
+    return;
+  }
+  cloudCall('admin', () => c.rpc('admin_set_maintenance', {
+    p_enabled: enabled,
+    p_message: message
+  }), { retries: 1, timeoutMs: 12000, delayMs: 400 })
+    .then(async ({ error }) => {
+      if (error) throw error;
+      await refreshMaintenanceConfig(true);
+      pushLocalAdminAudit('admin_maintenance', `${enabled ? 'ON' : 'OFF'} ${message}`);
+      showToast(enabled ? 'Mode maintenance activé (serveur)' : 'Mode maintenance désactivé', enabled ? 'info' : 'success');
+      renderAdminPanel();
+    })
+    .catch((e) => showToast(mapAuthError(e) || 'Maintenance serveur — appliquez la migration SQL', 'error', 4000));
 }
 function adminSaveOpsAlerts() {
   if (!isCurrentUserAdmin()) return;
@@ -5460,6 +6947,37 @@ function adminSaveOpsAlerts() {
   saveOpsAlertsConfig({ enabled, webhookUrl });
   pushLocalAdminAudit('admin_ops_alerts', `${enabled ? 'ON' : 'OFF'} ${webhookUrl ? 'webhook-set' : 'no-webhook'}`);
   showToast('Alerting ops sauvegardé', 'success', 1500);
+}
+async function adminTestOpsWebhook() {
+  if (!isCurrentUserAdmin()) return;
+  const cfg = getOpsAlertsConfig();
+  if (!cfg.enabled) { showToast('Active d’abord l’alerting ops', 'info', 2400); return; }
+  if (!/^https?:\/\//i.test(cfg.webhookUrl || '')) { showToast('URL webhook invalide', 'error'); return; }
+  const r = await sendOpsAlert('info', 'Test webhook ops HugoTaSlot — ping depuis le panel admin', { force: true, test: true, source: 'admin_test' });
+  if (r.ok) showToast('Webhook : test envoyé avec succès', 'success', 2800);
+  else showToast(`Webhook échec (${r.reason})`, 'error', 4200);
+}
+function adminFireTestProdError() {
+  if (!isCurrentUserAdmin()) return;
+  pushRuntimeLog('error', 'TEST PROD — erreur simulée admin (chemin alerting ops réel)');
+  showToast('Erreur prod simulée loggée — vérifie Discord/Slack si alerting activé', 'info', 3500);
+}
+async function adminFetchDashboardStats() {
+  const c = getAuthClient();
+  if (!c || !isCurrentUserAdmin()) return null;
+  try {
+    const { data, error } = await cloudCall('admin', () => c.rpc('get_admin_dashboard_stats'), {
+      retries: 1,
+      timeoutMs: 12000,
+      delayMs: 300,
+      quiet: true
+    });
+    if (error) throw error;
+    return data && typeof data === 'object' ? data : null;
+  } catch (e) {
+    bhWarn('adminFetchDashboardStats', e);
+    return null;
+  }
 }
 async function adminSetBalancePromptAsync(username) {
   if (!isCurrentUserAdmin()) return;
@@ -5867,6 +7385,28 @@ async function renderAdminPanel() {
   const adminCount = userEntries.filter(u => u && (u.isAdmin || u.role === 'admin')).length;
   const totalBalance = userEntries.reduce((a, u) => a + Number(u?.balance || 0), 0);
   const cloudStatus = getCloudUiStatus();
+  let dashStats = null;
+  if (isCloud && isCurrentUserAdmin()) {
+    dashStats = await adminFetchDashboardStats();
+  }
+  const dashEl = document.getElementById('admin-dashboard-grid');
+  if (dashEl) {
+    if (dashStats) {
+      const month = escapeHtml(String(dashStats.period_month || '—'));
+      dashEl.innerHTML = `
+        <div class="stat-card"><div class="stat-label">TOURNOI EN ATTENTE</div><div class="stat-value" style="color:${Number(dashStats.tournoi_pending) > 0 ? 'var(--gold)' : 'inherit'}">${Number(dashStats.tournoi_pending || 0)}</div></div>
+        <div class="stat-card"><div class="stat-label">VALIDÉS (${month})</div><div class="stat-value">${Number(dashStats.tournoi_verified_month || 0)}</div></div>
+        <div class="stat-card"><div class="stat-label">SOUMIS (${month})</div><div class="stat-value">${Number(dashStats.tournoi_submitted_month || 0)}</div></div>
+        <div class="stat-card"><div class="stat-label">HUNTS CLOUD</div><div class="stat-value">${Number(dashStats.hunts_cloud_total || 0)}</div></div>
+        <div class="stat-card"><div class="stat-label">HUNTS CRÉÉS 7J</div><div class="stat-value">${Number(dashStats.hunts_created_7d || 0)}</div></div>
+        <div class="stat-card"><div class="stat-label">JOUEURS ACTIFS 7J</div><div class="stat-value">${Number(dashStats.active_players_7d || 0)}</div></div>
+      `;
+    } else if (isCloud) {
+      dashEl.innerHTML = `<div class="bj-rec" style="grid-column:1/-1;">Dashboard cloud indisponible — applique <code>20260704_admin_dashboard.sql</code> dans Supabase.</div>`;
+    } else {
+      dashEl.innerHTML = `<div class="bj-rec" style="grid-column:1/-1;">Connecte-toi en compte cloud admin pour les stats communauté.</div>`;
+    }
+  }
   const statsEl = document.getElementById('admin-stats-grid');
   if (statsEl) {
     statsEl.innerHTML = `
@@ -6113,6 +7653,8 @@ async function renderAdminPanel() {
     `;
   }
   loadAdminRecentSlots().catch(() => {});
+  renderAdminTournoiTable().catch(() => {});
+  if (typeof syncAdminSlotPreview === 'function') syncAdminSlotPreview();
 }
 
 // ─── BOUTON ENVOYER SUR SLOT (Opener) ───
@@ -6199,6 +7741,7 @@ const SESSION_META_KEY = 'hm_session_meta_v1';
 const GUEST_PROFILE_KEY = 'hm_guest_profile_v1';
 const BALANCE_SNAPSHOT_KEY = 'hm_balance_snapshot_v1';
 const BALANCE_SNAPSHOT_BY_USER_KEY = 'hm_balance_snapshot_by_user_v1';
+const PENDING_CLOUD_BALANCE_DELTA_KEY = 'hm_pending_cloud_balance_delta_v1';
 if (!window.__hmStakePreview) window.__hmStakePreview = Object.create(null);
 window.__hmGameBalAnchor = window.__hmGameBalAnchor ?? null;
 const ADMIN_BOOTSTRAP_KEY = 'hm_admin_bootstrap_v1';
@@ -6209,6 +7752,7 @@ const DAILY_DROP_BASE = 25;
 const DAILY_STREAK_BONUS_PCT_PER_DAY = 5;
 let claimDailyDropInFlight = false;
 let currentUser = null;
+let profileMenuIsOpen = false;
 let profileMenuJustOpenedAt = 0;
 const GUEST_USER = { username: 'Invité', email: '', balance: 100, isGuest: true };
 let pendingAuthOpen = false;
@@ -6302,6 +7846,37 @@ function getBalanceSnapshotLegacy() {
   const n = Number(localStorage.getItem(BALANCE_SNAPSHOT_KEY));
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
+function getPendingCloudBalanceDeltaBucket() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PENDING_CLOUD_BALANCE_DELTA_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+function getPendingCloudBalanceDelta(userId) {
+  const n = Number(getPendingCloudBalanceDeltaBucket()[String(userId || '')] || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+function notePendingCloudBalanceDelta(userId, delta) {
+  const uid = String(userId || '');
+  if (!uid) return;
+  const d = Number(delta || 0);
+  if (!Number.isFinite(d) || Math.abs(d) < 0.0001) return;
+  const bucket = getPendingCloudBalanceDeltaBucket();
+  const next = Number(((Number(bucket[uid] || 0)) + d).toFixed(4));
+  if (Math.abs(next) < 0.0001) delete bucket[uid];
+  else bucket[uid] = next;
+  try { localStorage.setItem(PENDING_CLOUD_BALANCE_DELTA_KEY, JSON.stringify(bucket)); } catch (_) {}
+}
+function clearPendingCloudBalanceDelta(userId) {
+  const uid = String(userId || '');
+  if (!uid) return;
+  const bucket = getPendingCloudBalanceDeltaBucket();
+  if (!Object.prototype.hasOwnProperty.call(bucket, uid)) return;
+  delete bucket[uid];
+  try { localStorage.setItem(PENDING_CLOUD_BALANCE_DELTA_KEY, JSON.stringify(bucket)); } catch (_) {}
+}
 function getBalanceSnapshotBucket() {
   try {
     const parsed = JSON.parse(localStorage.getItem(BALANCE_SNAPSHOT_BY_USER_KEY) || '{}');
@@ -6331,10 +7906,16 @@ function getBalanceSnapshot({ userId = '', isGuest = false } = {}) {
   if (userId) {
     const n = Number(bucket.cloud[String(userId)]);
     if (Number.isFinite(n) && n >= 0) return n;
+    // IMPORTANT : pas de repli sur le snapshot global pour un compte cloud
+    // identifié. Le snapshot legacy est écrit pour le dernier compte actif et
+    // contaminerait un autre compte (solde dupliqué / faux reset).
+    return null;
   }
   if (isGuest) {
     const n = Number(bucket.guest);
     if (Number.isFinite(n) && n >= 0) return n;
+    // Idem pour l'invité : ne pas hériter du solde d'un compte cloud précédent.
+    return null;
   }
   return getBalanceSnapshotLegacy();
 }
@@ -6378,26 +7959,38 @@ function getPersistedBalanceForUser(userId, { isGuest = false } = {}) {
 }
 function resolveCloudBalanceMerge(currentBal, serverBal, userId = '') {
   const persisted = userId ? getPersistedBalanceForUser(userId) : null;
-  const c = Math.max(
+  let local = Math.max(
     Number.isFinite(Number(currentBal)) ? Number(currentBal) : 0,
     persisted !== null && Number.isFinite(Number(persisted)) ? Number(persisted) : 0
   );
   const s = Number(serverBal || 0);
-  if (!Number.isFinite(s)) return Number.isFinite(c) ? c : 0;
-  if (!Number.isFinite(c)) return s;
-  if (Math.abs(c - s) < 0.005) return s;
+  const pending = userId ? getPendingCloudBalanceDelta(userId) : 0;
+  if (!Number.isFinite(s)) return Number.isFinite(local) ? local : 0;
+  if (!Number.isFinite(local)) return s;
+  if (Math.abs(pending) > 0.005) {
+    const reconstructed = Math.max(0, Number((s + pending).toFixed(4)));
+    if (Math.abs(local - s) < 0.005 && Math.abs(reconstructed - local) > 0.005) {
+      local = reconstructed;
+    }
+  }
+  if (Math.abs(local - s) < 0.005) return s;
   // Serveur en retard : ne pas écraser les gains affichés localement.
-  if (s + 0.005 < c) {
+  if (s + 0.005 < local) {
     if (
       cloudQueuedGameSessions > 0 ||
       cloudGameSettlementInFlight > 0 ||
       hasPendingStakePreviews() ||
       (window.__hmGameBalAnchor !== null && window.__hmGameBalAnchor !== undefined)
     ) {
-      return c;
+      return local;
     }
-    pushRuntimeLog('warn', `cloud_balance_keep_local: server=${s.toFixed(2)} local=${c.toFixed(2)}`);
-    return c;
+    pushRuntimeLog('warn', `cloud_balance_keep_local: server=${s.toFixed(2)} local=${local.toFixed(2)}`);
+    return local;
+  }
+  // Serveur en avance : pertes locales / refresh avant synchro SQL — ne pas remonter le solde.
+  if (local + 0.005 < s && Math.abs(pending) > 0.005) {
+    pushRuntimeLog('warn', `cloud_balance_keep_local_pending: server=${s.toFixed(2)} local=${local.toFixed(2)} pending=${pending.toFixed(2)}`);
+    return local;
   }
   return s;
 }
@@ -6682,6 +8275,56 @@ function updateCurrentProfile({ displayName, avatar }) {
   }
   renderProfileBadge();
 }
+function describeCloudError(err) {
+  if (!err) return 'erreur inconnue';
+  if (typeof err === 'string') return err.trim() || 'erreur inconnue';
+  const parts = [
+    err.message,
+    err.details,
+    err.hint,
+    err.code ? `code ${err.code}` : '',
+    err.httpStatus ? `HTTP ${err.httpStatus}` : ''
+  ].map((x) => String(x || '').trim()).filter(Boolean);
+  if (parts.length) return parts.join(' · ');
+  try { return JSON.stringify(err).slice(0, 140); } catch (_) { return String(err); }
+}
+/** Appel RPC Supabase via fetch + JWT session (contourne circuit breaker / cache client). */
+async function supabaseRpc(name, params = {}) {
+  const supa = getAuthClient();
+  if (!supa) throw new Error('cloud_client_unavailable');
+  const { data: { session }, error: sessErr } = await supa.auth.getSession();
+  if (sessErr) throw sessErr;
+  if (!session?.access_token) throw new Error('auth required');
+  const res = await fetch(`${ONLINE_SUPABASE_URL}/rest/v1/rpc/${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: {
+      apikey: ONLINE_SUPABASE_ANON,
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    body: JSON.stringify(params || {})
+  });
+  const bodyText = await res.text();
+  let payload = null;
+  if (bodyText) {
+    try { payload = JSON.parse(bodyText); } catch { payload = { raw: bodyText }; }
+  }
+  if (!res.ok) {
+    const err = new Error(String(payload?.message || payload?.error || bodyText || `HTTP ${res.status}`));
+    err.code = payload?.code || String(res.status);
+    err.details = payload?.details || '';
+    err.hint = payload?.hint || '';
+    err.httpStatus = res.status;
+    throw err;
+  }
+  return payload;
+}
+function reparentProfileMenuHome() {
+  const menu = document.getElementById('profile-menu');
+  const wrap = document.getElementById('profile-wrap');
+  if (menu && wrap && menu.parentElement !== wrap) wrap.appendChild(menu);
+}
 function attachProfileMenuToBody() {
   const menu = document.getElementById('profile-menu');
   if (!menu || menu.classList.contains('hidden') || menu.parentElement === document.body) return;
@@ -6707,31 +8350,36 @@ function toggleProfileMenu(e) {
   if (e) e.stopPropagation();
   const menu = document.getElementById('profile-menu');
   if (!menu) return;
-  const opening = menu.classList.contains('hidden');
-  menu.classList.toggle('hidden');
-  if (opening) {
-    profileMenuJustOpenedAt = Date.now();
-    requestAnimationFrame(() => {
-      positionProfileMenu();
-      requestAnimationFrame(positionProfileMenu);
-    });
+  if (profileMenuIsOpen) {
+    closeProfileMenu();
+    return;
   }
-  if (opening && isCloudUser() && currentUser?.id) {
+  profileMenuIsOpen = true;
+  menu.classList.remove('hidden');
+  profileMenuJustOpenedAt = Date.now();
+  requestAnimationFrame(() => {
+    positionProfileMenu();
+    requestAnimationFrame(positionProfileMenu);
+  });
+  if (isCloudUser() && currentUser?.id) {
     loadCloudProfile(currentUser.id, { force: true })
       .then((fresh) => {
         if (!fresh || !currentUser || currentUser.id !== fresh.id) return;
         currentUser = { ...currentUser, ...fresh };
         saveSession(currentUser);
         updateAdminTabVisibility();
-        renderProfileBadge();
+        renderProfileBadge({ preserveMenu: true });
         updateLobbyBalance();
       })
       .catch(() => {});
   }
+  if (typeof renderProfileTournoiSubmissions === 'function') renderProfileTournoiSubmissions();
 }
 function closeProfileMenu() {
+  profileMenuIsOpen = false;
   const menu = document.getElementById('profile-menu');
   if (menu) menu.classList.add('hidden');
+  reparentProfileMenuHome();
 }
 function applyProfileSettings() {
   const avatarEl = document.getElementById('profile-avatar-url');
@@ -6755,59 +8403,6 @@ function saveProfilePreferences() {
   saveUiPrefs({ uiScale, uiSound, uiMuted, uiVolume, uiGameVolume, defaultCasino });
   applyUiPrefs();
   showToast('Préférences sauvegardées', 'success', 1800);
-}
-function saveOpenerKeybinds() {
-  const confirmEl = document.getElementById('home-opener-key-confirm');
-  const prevEl = document.getElementById('home-opener-key-prev');
-  const nextEl = document.getElementById('home-opener-key-next');
-  saveUiPrefs({
-    openerConfirmKey: confirmEl ? confirmEl.value : 'enter',
-    openerPrevKey: prevEl ? prevEl.value : 'arrowleft',
-    openerNextKey: nextEl ? nextEl.value : 'arrowright'
-  });
-  showToast('Raccourcis opener sauvegardés', 'success', 1600);
-}
-function saveCurrentOpenerProfile() {
-  const confirmEl = document.getElementById('home-opener-key-confirm');
-  const prevEl = document.getElementById('home-opener-key-prev');
-  const nextEl = document.getElementById('home-opener-key-next');
-  const name = prompt('Nom du profil raccourcis', `Profil ${new Date().toLocaleTimeString('fr-FR')}`);
-  if (!name) return;
-  const profiles = getOpenerKeybindProfiles();
-  profiles.unshift({
-    name: String(name).slice(0, 50),
-    confirm: confirmEl ? confirmEl.value : 'enter',
-    prev: prevEl ? prevEl.value : 'arrowleft',
-    next: nextEl ? nextEl.value : 'arrowright'
-  });
-  saveOpenerKeybindProfiles(profiles);
-  populateOpenerProfilesSelect();
-  showToast('Profil raccourcis sauvegardé', 'success', 1600);
-}
-function applySelectedOpenerProfile() {
-  const sel = document.getElementById('home-opener-profile');
-  const idx = Number(sel?.value);
-  if (!Number.isFinite(idx) || idx < 0) return;
-  const p = getOpenerKeybindProfiles()[idx];
-  if (!p) return;
-  const confirmEl = document.getElementById('home-opener-key-confirm');
-  const prevEl = document.getElementById('home-opener-key-prev');
-  const nextEl = document.getElementById('home-opener-key-next');
-  if (confirmEl) confirmEl.value = p.confirm || 'enter';
-  if (prevEl) prevEl.value = p.prev || 'arrowleft';
-  if (nextEl) nextEl.value = p.next || 'arrowright';
-  saveOpenerKeybinds();
-  showToast(`Profil "${p.name}" appliqué`, 'success', 1600);
-}
-function deleteSelectedOpenerProfile() {
-  const sel = document.getElementById('home-opener-profile');
-  const idx = Number(sel?.value);
-  if (!Number.isFinite(idx) || idx < 0) { showToast('Choisis un profil', 'info'); return; }
-  const profiles = getOpenerKeybindProfiles();
-  const removed = profiles.splice(idx, 1)[0];
-  saveOpenerKeybindProfiles(profiles);
-  populateOpenerProfilesSelect();
-  showToast(`Profil "${removed?.name || ''}" supprimé`, 'info', 1500);
 }
 function resetProfileAvatar() {
   const nameEl = document.getElementById('profile-display-name');
@@ -6929,6 +8524,63 @@ function getDailyState() {
     lastClaimDay
   };
 }
+// Détecte une RPC absente ou une signature non déployée (PostgREST PGRST202),
+// pour basculer proprement sur l'ancienne signature sans casser le claim.
+function isMissingRpcSignature(err) {
+  const code = String(err?.code || '').toUpperCase();
+  const msg = String(err?.message || err?.details || err?.hint || err || '').toLowerCase();
+  return code === 'PGRST202'
+    || msg.includes('could not find the function')
+    || msg.includes('schema cache')
+    || (msg.includes('function') && msg.includes('does not exist'));
+}
+function parseDailyDropRpcRow(raw) {
+  const row = Array.isArray(raw) ? raw[0] : raw;
+  if (!row || typeof row !== 'object') return null;
+  const awarded = row.awarded ?? row.Awarded;
+  const newBalance = row.new_balance ?? row.newBalance ?? row.new_bal;
+  if (awarded === undefined && newBalance === undefined) return null;
+  return {
+    awarded: Number(awarded ?? 0),
+    newBalance: Number(newBalance),
+    streak: Number(row.streak ?? 1),
+    claimDay: Number(row.next_claim_day ?? row.nextClaimDay ?? getDayIndex())
+  };
+}
+async function reconcileDailyDropFromCloud() {
+  if (!isCloudUser() || !currentUser?.id) return false;
+  try {
+    const fresh = await loadCloudProfile(currentUser.id, { force: true });
+    if (!fresh || String(fresh.id) !== String(currentUser.id)) return false;
+    const today = getDayIndex();
+    const claimedToday = fresh.lastClaimDay !== null && fresh.lastClaimDay !== undefined
+      && dayDiff(today, fresh.lastClaimDay) === 0;
+    if (!claimedToday) return false;
+    currentUser.streak = Number(fresh.streak || 0);
+    currentUser.lastClaimDay = fresh.lastClaimDay ?? null;
+    currentUser.lastClaimAt = fresh.lastClaimAt || currentUser.lastClaimAt;
+    if (Number.isFinite(Number(fresh.balance))) currentUser.balance = Number(fresh.balance);
+    saveSession(currentUser);
+    updateLobbyBalance();
+    renderProfileBadge({ preserveMenu: true });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+async function invokeClaimDailyDropRpc(safeFactor) {
+  markCircuitSuccess('sync');
+  let data;
+  let appliedFactorServerSide = true;
+  try {
+    data = await supabaseRpc('claim_daily_drop', { p_factor: safeFactor });
+  } catch (e) {
+    if (!isMissingRpcSignature(e)) throw e;
+    data = await supabaseRpc('claim_daily_drop', {});
+    appliedFactorServerSide = false;
+  }
+  return { data, appliedFactorServerSide };
+}
 async function claimDailyDrop() {
   if (!currentUser) return;
   if (claimDailyDropInFlight) return;
@@ -6946,43 +8598,59 @@ async function claimDailyDrop() {
       showToast('Connexion Supabase indisponible', 'error', 2200);
       return;
     }
+    try {
+      const { data: sessData } = await supaCloud.auth.getSession();
+      if (!sessData?.session) {
+        showToast('Session expirée. Reconnecte-toi pour récupérer le drop.', 'error', 2600);
+        return;
+      }
+      await supaCloud.auth.refreshSession().catch(() => {});
+    } catch (_) {}
   }
 
   claimDailyDropInFlight = true;
   try {
     if (isCloudUser()) {
-      const { data, error } = await cloudCall('sync', () => supaCloud.rpc('claim_daily_drop'), {
-        retries: 1,
-        timeoutMs: 14000,
-        delayMs: 450,
-        quiet: true
-      });
-      if (error) throw error;
-      const row = Array.isArray(data) ? data[0] : data;
-      if (!row || (row.awarded === undefined && row.new_balance === undefined)) {
-        throw new Error('claim_daily_drop_empty');
+      const rankInfo = getDailyRankDropInfo();
+      const factor = Number(rankInfo.factor || 1);
+      const safeFactor = Number.isFinite(factor) && factor > 0 ? factor : 1;
+
+      const { data, appliedFactorServerSide } = await invokeClaimDailyDropRpc(safeFactor);
+
+      let parsed = parseDailyDropRpcRow(data);
+      if (!parsed || !Number.isFinite(parsed.newBalance)) {
+        const reconciled = await reconcileDailyDropFromCloud();
+        if (reconciled) {
+          showToast('Drop déjà récupéré aujourd’hui', 'info', 2000);
+          return;
+        }
+        throw new Error(parsed ? 'claim_daily_drop_invalid_balance' : 'claim_daily_drop_empty');
       }
-      const awarded = Number(row.awarded ?? 0);
-      let newBal = Number(row.new_balance);
-      if (!Number.isFinite(newBal)) {
-        throw new Error('claim_daily_drop_invalid_balance');
-      }
-      const streak = Number(row.streak ?? 1);
-      const claimDay = Number(row.next_claim_day ?? today);
-      currentUser.balance = newBal;
-      saveSession(currentUser);
-      const adjust = Number((st.reward - awarded).toFixed(2));
-      if (Math.abs(adjust) >= 0.01) {
-        newBal = await applyBalanceDeltaCloud(adjust, `daily_rank_adjust_${st.rankLabel}`);
-      }
-      currentUser.balance = newBal;
+
+      const { awarded, newBalance, streak, claimDay } = parsed;
+      // Le serveur fait foi : on s'aligne immédiatement et on persiste avant
+      // tout autre appel pour ne jamais perdre le crédit en cas d'interruption.
+      currentUser.balance = newBalance;
       currentUser.streak = streak;
       currentUser.lastClaimDay = claimDay;
       currentUser.lastClaimAt = new Date().toISOString();
+      clearPendingCloudBalanceDelta(currentUser.id);
       saveSession(currentUser);
+
+      // Ajustement de rang uniquement si le serveur n'a pas pu l'appliquer
+      // (fallback ancienne RPC). Une éventuelle erreur ici n'annule pas le drop.
+      if (!appliedFactorServerSide) {
+        const adjust = Number((st.reward - awarded).toFixed(2));
+        if (Math.abs(adjust) >= 0.01) {
+          const adjustedBal = await applyBalanceDeltaCloud(adjust, `daily_rank_adjust_${st.rankLabel}`);
+          if (Number.isFinite(Number(adjustedBal))) currentUser.balance = Number(adjustedBal);
+          saveSession(currentUser);
+        }
+      }
       updateLobbyBalance();
-      renderProfileBadge();
-      showToast(`Drop récupéré: +${fmt(st.reward)} (${st.rankLabel})`, 'success', 2600);
+      renderProfileBadge({ preserveMenu: true });
+      const shownAward = appliedFactorServerSide ? awarded : st.reward;
+      showToast(`Drop récupéré: +${fmt(shownAward)} (${st.rankLabel})`, 'success', 2600);
       return;
     }
 
@@ -7012,14 +8680,29 @@ async function claimDailyDrop() {
     showToast(`Drop récupéré: +${fmt(st.reward)} (streak ${st.nextStreak})`, 'success', 2600);
   } catch (e) {
     if (isCloudUser()) {
-      const msg = String(e?.message || e || '').toLowerCase();
+      const detail = describeCloudError(e);
+      const msg = detail.toLowerCase();
+      if (msg.includes('already_claimed') || msg.includes('balance_update_failed') || msg.includes('claim_daily_drop_empty') || msg.includes('claim_daily_drop_invalid_balance')) {
+        const reconciled = await reconcileDailyDropFromCloud();
+        if (reconciled) {
+          showToast('Drop déjà récupéré aujourd’hui', 'info', 2000);
+          return;
+        }
+      }
       if (msg.includes('already_claimed')) {
-        showToast('Drop déjà récupéré aujourd’hui', 'info', 1800);
+        showToast('Drop déjà récupéré aujourd’hui', 'info', 2000);
       } else if (msg.includes('auth required')) {
         showToast('Session expirée. Reconnecte-toi pour récupérer le drop.', 'error', 2600);
+      } else if (msg.includes('profile_not_found')) {
+        showToast('Profil introuvable. Déconnecte-toi puis reconnecte-toi.', 'error', 2800);
+      } else if (isMissingRpcSignature(e)) {
+        showToast('RPC drop non disponible — exécute la migration SQL puis réessaie.', 'error', 3200);
+      } else if (msg.includes('circuit') || msg.includes('offline') || msg.includes('timeout') || msg.includes('failed to fetch')) {
+        showToast('Connexion cloud instable. Réessaie dans quelques secondes.', 'error', 2800);
       } else {
         console.error('[claim_daily_drop]', e);
-        showToast('Échec de la récupération du drop', 'error', 2200);
+        pushRuntimeLog('error', `daily_drop_err: ${detail.slice(0, 180)}`);
+        showToast(`Drop impossible : ${detail.slice(0, 120)}`, 'error', 3600);
       }
     } else {
       console.error('[claim_daily_drop_local]', e);
@@ -7062,10 +8745,11 @@ async function initAuth() {
         }
         const profile = await loadCloudProfile(uid, { force: true });
         if (profile) {
-          currentUser = profile;
+          currentUser = { ...(currentUser || {}), ...profile };
           saveSession(currentUser);
           saveSessionMeta({ startedAt: Date.now(), mode: 'cloud' });
           authReady = true;
+          reconcileCloudBalanceAfterAuth().catch(() => {});
         }
       }
     } catch (_) {}
@@ -7358,13 +9042,15 @@ async function logoutAllDevices() {
   enterGuestMode('Toutes les sessions ont été fermées.');
 }
 
-function renderProfileBadge() {
+function renderProfileBadge(opts = {}) {
+  const preserveMenu = !!opts.preserveMenu;
+  const keepMenuOpen = preserveMenu || profileMenuIsOpen;
+  // Évite les doublons #profile-menu (détaché sur body après positionProfileMenu).
+  document.querySelectorAll('body > #profile-menu').forEach((el) => el.remove());
   // Ajouter le badge dans le header principal
   const area = document.getElementById('header');
   if (!area) return;
   let badge = document.getElementById('profile-badge');
-  const existingMenu = document.getElementById('profile-menu');
-  const keepMenuOpen = !!(existingMenu && !existingMenu.classList.contains('hidden'));
   if (!badge) {
     badge = document.createElement('div');
     badge.id = 'profile-badge';
@@ -7390,6 +9076,7 @@ function renderProfileBadge() {
           <div>
             <div class="profile-name">${safePseudo}</div>
             <div class="profile-balance" id="profile-badge-balance">${fmtVirtual(getUserBalance())}</div>
+            ${typeof getRankBadgeHtml === 'function' ? getRankBadgeHtml() : ''}
             <div class="profile-online"><span class="profile-online-dot"></span><span id="online-users-count">${Math.max(1, onlineCount)}</span> en ligne</div>
           </div>
         </div>
@@ -7401,6 +9088,7 @@ function renderProfileBadge() {
               <div class="profile-menu-big">${safePseudo}</div>
               <div class="profile-menu-sub">Nom affiché: ${safeName}</div>
               <div class="profile-menu-sub">Solde actuel: <span id="profile-menu-balance">${fmtVirtual(getUserBalance())}</span>${adminNow ? ' · ADMIN' : ''}</div>
+              ${typeof getRankBadgeHtml === 'function' ? getRankBadgeHtml() : ''}
             </div>
           </div>
           <div class="profile-grid">
@@ -7423,6 +9111,12 @@ function renderProfileBadge() {
             <button class="drop-claim-btn" onclick="claimDailyDrop()" ${daily.canClaim ? '' : 'disabled'}>
               ${daily.canClaim ? 'Récupérer le drop' : 'Déjà récupéré aujourd’hui'}
             </button>
+          </div>
+          <div class="drop-box" id="profile-weekly-objectives"></div>
+          <div class="drop-box">
+            <div class="drop-title">Mes soumissions tournoi</div>
+            <div class="drop-meta" style="margin-bottom:8px;">Statut : en attente, validé (refus = entrée retirée par l’admin).</div>
+            <div id="profile-tournoi-submissions"><div class="drop-meta">Ouvre le menu pour charger…</div></div>
           </div>
           <div class="drop-box">
             <div class="drop-title">Préférences</div>
@@ -7469,7 +9163,7 @@ function renderProfileBadge() {
           </div>
           <div class="drop-box">
             <div class="drop-title">Compte Discord</div>
-            <div class="drop-meta" style="margin-bottom:8px;">Lie ton compte pour <code>/hunts</code>, <code>/leaderboard</code>. <code>/slot</code> et <code>/call</code> (tirage catalogue) sont utilisables par tous sur le serveur.</div>
+            <div class="drop-meta" style="margin-bottom:8px;">Lie ton compte pour <code>/hunts</code>, <code>/leaderboard</code>, <code>/live slug</code>. <code>/slot</code> et <code>/call</code> (tirage catalogue) sont utilisables par tous sur le serveur.</div>
             ${(!currentUser.isGuest && currentUser.cloud)
               ? `<button class="profile-mini-btn primary" style="width:100%;" onclick="openDiscordLinkModal()">Gérer la liaison Discord</button>`
               : `<div class="bj-rec">Connecte-toi avec un compte cloud pour activer la liaison Discord.</div>`}
@@ -7502,6 +9196,7 @@ function renderProfileBadge() {
       </div>
     `;
     if (keepMenuOpen) {
+      profileMenuIsOpen = true;
       const menu = document.getElementById('profile-menu');
       if (menu) {
         menu.classList.remove('hidden');
@@ -7529,6 +9224,8 @@ function renderProfileBadge() {
   }
   updateOnlineCountUI();
   renderMaintenanceBanner();
+  ensureNotifBellInHeader();
+  renderWeeklyObjectivesInProfile();
 }
 
 function getUserBalance() {
@@ -7638,6 +9335,18 @@ function scheduleCloudBalanceSync(delayMs = 700) {
     cloudBalanceSyncTimer = null;
     syncCloudBalanceNow().catch(() => {});
   }, Math.max(150, Number(delayMs) || 700));
+}
+async function reconcileCloudBalanceAfterAuth() {
+  if (!isCloudUser() || !currentUser?.id) return;
+  const pending = getPendingCloudBalanceDelta(currentUser.id);
+  if (Math.abs(pending) < 0.005) return;
+  if (cloudQueuedGameSessions > 0 || cloudGameSettlementInFlight > 0 || hasPendingStakePreviews()) return;
+  try {
+    await applyBalanceDeltaCloud(pending, 'pending_reconcile');
+    clearPendingCloudBalanceDelta(currentUser.id);
+  } catch (e) {
+    pushRuntimeLog('warn', `pending_reconcile_failed: ${String(e?.message || e || 'unknown')}`);
+  }
 }
 
 function setUserBalance(val) {
@@ -7749,6 +9458,7 @@ async function recordGameSession(game, stake, payout) {
         updateLobbyBalance();
         renderProfileBadge();
       }
+      clearPendingCloudBalanceDelta(currentUser?.id);
       pushRuntimeLog('info', `game_tx_ok: ${String(game || 'unknown')} balance=${Number(currentUser?.balance || 0).toFixed(2)}`);
       return newBal;
     } catch (e) {
@@ -7813,6 +9523,7 @@ async function applyNetDeltaForGame(game, netAmount) {
   trackPlayerGameStats(String(game || 'unknown'), stake, payout);
   if (isCloudUser()) {
     if (currentUser) {
+      notePendingCloudBalanceDelta(currentUser.id, net);
       currentUser.balance = Math.max(0, Number(currentUser.balance || 0) + net);
       saveSession(currentUser);
       updateLobbyBalance();
@@ -7865,7 +9576,7 @@ const RANK_STEPS_PER_FAMILY = 5;
 const STATS_GAMES = ['blackjack', 'roulette', 'crash', 'keno', 'mines', 'plinko', 'flip', 'dice', 'hilo', 'chicken', 'pump', 'limbo'];
 let playerStatsScope = '';
 let playerStats = null;
-let statsWindowDays = 30;
+// [stats UI] — renderStatsPage / setStatsWindow dans scripts/pages/stats.js (LAZY_PAGE_SCRIPTS)
 function statsScopeKey() {
   if (isCloudUser()) return `cloud:${currentUser.id}`;
   if (currentUser?.isGuest) return `guest:${currentUser.displayName || 'invite'}`;
@@ -7987,6 +9698,204 @@ function getAllRankDropFactors() {
   });
   return rows;
 }
+const WEEKLY_OBJECTIVES_KEY = 'hm_weekly_objectives_v1';
+const GAME_HISTORY_MAX = 10;
+const WEEKLY_OBJECTIVE_DEFS = [
+  { id: 'bj5', game: 'blackjack', target: 5, title: '5 parties de Black Jack', reward: 20, desc: 'Bonus drop hebdomadaire' },
+];
+function getIsoWeekKey(d = new Date()) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+function weeklyObjectivesStorageKey() {
+  return `${WEEKLY_OBJECTIVES_KEY}:${statsScopeKey()}`;
+}
+function loadWeeklyObjectivesState() {
+  const weekKey = getIsoWeekKey();
+  try {
+    const raw = JSON.parse(localStorage.getItem(weeklyObjectivesStorageKey()) || 'null');
+    if (!raw || raw.weekKey !== weekKey) return { weekKey, progress: {}, claimed: {} };
+    return { weekKey, progress: raw.progress || {}, claimed: raw.claimed || {} };
+  } catch (_) {
+    return { weekKey, progress: {}, claimed: {} };
+  }
+}
+function saveWeeklyObjectivesState(state) {
+  try { localStorage.setItem(weeklyObjectivesStorageKey(), JSON.stringify(state)); } catch (_) {}
+}
+function getWeeklyObjectivesView() {
+  const state = loadWeeklyObjectivesState();
+  return WEEKLY_OBJECTIVE_DEFS.map((def) => {
+    const progress = Number(state.progress[def.id] || 0);
+    const done = progress >= def.target;
+    const claimed = !!state.claimed[def.id];
+    return { ...def, progress, done, claimed, canClaim: done && !claimed, weekKey: state.weekKey };
+  });
+}
+function bumpWeeklyObjectiveProgress(game) {
+  const state = loadWeeklyObjectivesState();
+  let changed = false;
+  WEEKLY_OBJECTIVE_DEFS.forEach((def) => {
+    if (def.game !== game) return;
+    const cur = Number(state.progress[def.id] || 0);
+    if (cur >= def.target) return;
+    state.progress[def.id] = Math.min(def.target, cur + 1);
+    changed = true;
+  });
+  if (!changed) return;
+  saveWeeklyObjectivesState(state);
+  renderWeeklyObjectivesPanel();
+  renderWeeklyObjectivesInProfile();
+}
+async function claimWeeklyObjectiveBonus(objectiveId) {
+  const def = WEEKLY_OBJECTIVE_DEFS.find((d) => d.id === objectiveId);
+  if (!def) return;
+  const state = loadWeeklyObjectivesState();
+  const progress = Number(state.progress[def.id] || 0);
+  if (progress < def.target || state.claimed[def.id]) {
+    showToast('Objectif non terminé ou déjà récupéré', 'info', 2200);
+    return;
+  }
+  state.claimed[def.id] = true;
+  saveWeeklyObjectivesState(state);
+  const reward = Number(def.reward || 0);
+  if (isCloudUser()) {
+    await applyBalanceDeltaCloud(reward, `weekly_objective_${def.id}`);
+  } else {
+    setUserBalance(getUserBalance() + reward);
+    updateLobbyBalance();
+  }
+  renderProfileBadge({ preserveMenu: true });
+  renderWeeklyObjectivesPanel();
+  renderWeeklyObjectivesInProfile();
+  showToast(`Bonus objectif : +${fmt(reward)}`, 'success', 2600);
+}
+function buildWeeklyObjectivesHtml(compact) {
+  const items = getWeeklyObjectivesView();
+  if (!items.length) return '';
+  const rows = items.map((o) => {
+    const pct = Math.min(100, Math.round((o.progress / o.target) * 100));
+    const status = o.claimed ? 'Récupéré' : (o.canClaim ? 'Prêt !' : `${o.progress}/${o.target}`);
+    const btn = o.canClaim
+      ? `<button type="button" class="profile-mini-btn primary weekly-obj-claim" onclick="claimWeeklyObjectiveBonus('${escapeHtml(o.id)}')">+${fmt(o.reward)} bonus</button>`
+      : (o.claimed ? `<span class="weekly-obj-done">✔ Bonus reçu</span>` : `<span class="weekly-obj-pending">${status}</span>`);
+    return `<div class="weekly-obj-row${o.claimed ? ' is-claimed' : ''}${o.canClaim ? ' is-ready' : ''}">
+      <div class="weekly-obj-head">
+        <span class="weekly-obj-title">${escapeHtml(o.title)}</span>
+        <span class="weekly-obj-status">${status}</span>
+      </div>
+      <div class="weekly-obj-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
+      ${compact ? '' : `<div class="weekly-obj-meta">${escapeHtml(o.desc)} · semaine ${escapeHtml(o.weekKey)}</div>`}
+      ${btn}
+    </div>`;
+  }).join('');
+  return `<div class="weekly-obj-wrap">
+    <div class="drop-title">${compact ? 'Objectif hebdo' : 'Objectifs hebdo mini-jeux'}</div>
+    ${rows}
+  </div>`;
+}
+function renderWeeklyObjectivesPanel() {
+  const wrap = document.getElementById('games-weekly-objectives');
+  if (!wrap) return;
+  wrap.innerHTML = buildWeeklyObjectivesHtml(false);
+}
+function renderWeeklyObjectivesInProfile() {
+  const wrap = document.getElementById('profile-weekly-objectives');
+  if (!wrap) return;
+  wrap.innerHTML = buildWeeklyObjectivesHtml(true);
+}
+function renderGamesModeBanner() {
+  const wrap = document.getElementById('games-mode-banner');
+  if (!wrap) return;
+  if (!currentUser) {
+    wrap.innerHTML = '';
+    return;
+  }
+  if (currentUser.isGuest) {
+    wrap.innerHTML = `<div class="games-mode-banner-inner games-mode-guest">
+      <div class="games-mode-icon" aria-hidden="true">👤</div>
+      <div class="games-mode-body">
+        <div class="games-mode-title">Mode invité</div>
+        <div class="games-mode-text">Solde et stats stockés <strong>uniquement sur cet appareil</strong>. Pas de sync cloud, pas de classement wager, drop limité au navigateur.</div>
+      </div>
+      <button type="button" class="profile-mini-btn primary" onclick="showAuth()">Créer un compte cloud</button>
+    </div>`;
+    return;
+  }
+  if (currentUser.cloud) {
+    const st = getCloudUiStatus();
+    wrap.innerHTML = `<div class="games-mode-banner-inner games-mode-cloud">
+      <div class="games-mode-icon" aria-hidden="true">☁</div>
+      <div class="games-mode-body">
+        <div class="games-mode-title">Mode cloud · ${escapeHtml(st.label)}</div>
+        <div class="games-mode-text">Solde synchronisé Supabase, sessions enregistrées pour le classement wager, drop quotidien + streak, objectifs hebdo.</div>
+      </div>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="games-mode-banner-inner games-mode-local">
+    <div class="games-mode-icon" aria-hidden="true">💾</div>
+    <div class="games-mode-body">
+      <div class="games-mode-title">Mode local (legacy)</div>
+      <div class="games-mode-text">Compte sans cloud — solde dans le navigateur. Connecte-toi avec un compte Supabase pour la sync et les classements.</div>
+    </div>
+    <button type="button" class="profile-mini-btn" onclick="showAuth()">Passer au cloud</button>
+  </div>`;
+}
+
+const PWA_INSTALL_DISMISS_KEY = 'hm_pwa_install_dismissed_v1';
+let deferredPwaInstallPrompt = null;
+function isPwaStandalone() {
+  try {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  } catch (_) { return false; }
+}
+function initPwaInstallPrompt() {
+  if (window.__hmPwaInitBound) return;
+  window.__hmPwaInitBound = true;
+  const banner = document.getElementById('pwa-install-banner');
+  const btn = document.getElementById('pwa-install-btn');
+  const dismiss = document.getElementById('pwa-install-dismiss');
+  const showBanner = () => {
+    if (!banner || isPwaStandalone()) return;
+    if (localStorage.getItem(PWA_INSTALL_DISMISS_KEY) === '1') return;
+    if (!deferredPwaInstallPrompt) return;
+    banner.classList.remove('hidden');
+  };
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPwaInstallPrompt = e;
+    showBanner();
+  });
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      if (!deferredPwaInstallPrompt) {
+        showToast('Installation disponible depuis le menu du navigateur (Ajouter à l’écran d’accueil)', 'info', 3200);
+        return;
+      }
+      deferredPwaInstallPrompt.prompt();
+      try { await deferredPwaInstallPrompt.userChoice; } catch (_) {}
+      deferredPwaInstallPrompt = null;
+      if (banner) banner.classList.add('hidden');
+    });
+  }
+  if (dismiss) {
+    dismiss.addEventListener('click', () => {
+      try { localStorage.setItem(PWA_INSTALL_DISMISS_KEY, '1'); } catch (_) {}
+      if (banner) banner.classList.add('hidden');
+    });
+  }
+  window.addEventListener('appinstalled', () => {
+    deferredPwaInstallPrompt = null;
+    if (banner) banner.classList.add('hidden');
+    showToast('Application installée', 'success', 2200);
+  });
+  setTimeout(showBanner, 1200);
+}
 function trackPlayerGameStats(game, stake, payout) {
   const stats = ensurePlayerStatsReady();
   if (!stats) return;
@@ -8015,140 +9924,10 @@ function trackPlayerGameStats(game, stake, payout) {
   stats.daily[dayKey] = day;
   stats.sessionsByHour[d.getHours()] = Math.max(0, Number(stats.sessionsByHour[d.getHours()] || 0) + 1);
   savePlayerStatsForScope(playerStatsScope, stats);
-  if (__activePage === 'stats') renderStatsPage();
+  bumpWeeklyObjectiveProgress(gKey);
+  if (__activePage === 'stats' && typeof renderStatsPage === 'function') renderStatsPage();
 }
-function renderStatsPage() {
-  const root = document.getElementById('stats-root');
-  if (!root) return;
-  const stats = ensurePlayerStatsReady() || createEmptyPlayerStats();
-  const rank = computeRankFromWagered(stats.wagered);
-  const games = STATS_GAMES.map((g) => ({ id: g, ...(stats.games[g] || { played: 0, wagered: 0, payout: 0, net: 0 }) }));
-  const playedTotal = Math.max(1, games.reduce((a, g) => a + Number(g.played || 0), 0));
-  const topPlayed = games.slice().sort((a, b) => b.played - a.played).slice(0, 6);
-  const maxAbsNet = Math.max(1, ...games.map((g) => Math.abs(Number(g.net || 0))));
-  const winRate = ((games.filter((g) => Number(g.net || 0) > 0).length / games.length) * 100);
-  const allDailyEntries = Object.entries(stats.daily || {}).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-  const cutoffMs = statsWindowDays > 0 ? (Date.now() - (statsWindowDays * 24 * 60 * 60 * 1000)) : 0;
-  const dailyEntries = allDailyEntries
-    .filter(([day]) => {
-      if (statsWindowDays <= 0) return true;
-      const t = Date.parse(`${day}T00:00:00`);
-      return Number.isFinite(t) && t >= cutoffMs;
-    })
-    .slice(-12);
-  const maxDailyAbs = Math.max(1, ...dailyEntries.map(([, v]) => Math.abs(Number(v?.net || 0))));
-  const hourEntriesRaw = Array(24).fill(0);
-  if (statsWindowDays > 0) {
-    dailyEntries.forEach(([day]) => {
-      const src = stats.daily?.[day];
-      if (!src || !Array.isArray(src.sessionsByHour)) return;
-      for (let h = 0; h < 24; h++) hourEntriesRaw[h] += Number(src.sessionsByHour[h] || 0);
-    });
-  } else {
-    (stats.sessionsByHour || Array(24).fill(0)).forEach((v, h) => { hourEntriesRaw[h] = Number(v || 0); });
-  }
-  const hourEntries = hourEntriesRaw.map((v, h) => ({ h, v }));
-  const maxHour = Math.max(1, ...hourEntries.map((x) => x.v));
-  const rankDropTable = getAllRankDropFactors();
-  root.innerHTML = `
-    <div class="stats-rank-box">
-      <div class="stats-rank-title">${rank.label}</div>
-      <div class="stats-rank-meta">Points misés: ${fmtVirtual(stats.wagered)} | Prochain rang à ${fmtVirtual(rank.nextReq)}</div>
-      <div class="stats-rank-progress"><div class="stats-rank-fill" style="width:${(rank.progress * 100).toFixed(1)}%"></div></div>
-    </div>
-    <div class="stats-grid">
-      <div class="stat-card"><div class="stat-label">MANCHES</div><div class="stat-value">${stats.rounds}</div></div>
-      <div class="stat-card"><div class="stat-label">TOTAL MISÉ</div><div class="stat-value">${fmtVirtual(stats.wagered)}</div></div>
-      <div class="stat-card"><div class="stat-label">TOTAL PAYOUT</div><div class="stat-value">${fmtVirtual(stats.payout)}</div></div>
-      <div class="stat-card"><div class="stat-label">NET</div><div class="stat-value" style="color:${stats.net >= 0 ? 'var(--green)' : 'var(--red)'}">${stats.net >= 0 ? '+' : ''}${fmtVirtual(stats.net)}</div></div>
-    </div>
-    <div class="stats-grid" style="grid-template-columns:repeat(2,minmax(160px,1fr));">
-      <div class="stat-card"><div class="stat-label">JEUX DIFFÉRENTS JOUÉS</div><div class="stat-value">${games.filter((g) => g.played > 0).length}</div></div>
-      <div class="stat-card"><div class="stat-label">TAUX JEUX GAGNANTS</div><div class="stat-value">${winRate.toFixed(1)}%</div></div>
-    </div>
-    <div class="stats-chart-wrap" style="margin-bottom:12px;">
-      <div class="mise-section-title" style="margin-bottom:8px;">JEUX LES PLUS JOUÉS</div>
-      ${topPlayed.map((g) => {
-        const pct = ((Number(g.played || 0) / playedTotal) * 100);
-        return `<div class="stats-chart-row">
-          <div class="stats-chart-label">${escapeHtml(g.id.toUpperCase())}</div>
-          <div class="stats-chart-bar"><div class="stats-chart-fill pos" style="width:${pct.toFixed(2)}%"></div></div>
-          <div class="stats-chart-val">${Number(g.played || 0)} manches</div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div class="stats-chart-wrap">
-      <div class="mise-section-title" style="margin-bottom:8px;">GAINS / PERTES PAR JEU</div>
-      ${games.map((g) => {
-        const net = Number(g.net || 0);
-        const w = (Math.abs(net) / maxAbsNet) * 100;
-        const cls = net >= 0 ? 'pos' : 'neg';
-        return `<div class="stats-chart-row">
-          <div class="stats-chart-label">${escapeHtml(g.id.toUpperCase())}</div>
-          <div class="stats-chart-bar"><div class="stats-chart-fill ${cls}" style="width:${w.toFixed(2)}%"></div></div>
-          <div class="stats-chart-val" style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${net >= 0 ? '+' : ''}${fmtVirtual(net)}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div class="stats-chart-wrap" style="margin-top:12px;">
-      <div class="admin-toolbar" style="margin-bottom:8px;">
-        <button class="profile-mini-btn ${statsWindowDays===7?'primary':''}" onclick="setStatsWindow(7)">7j</button>
-        <button class="profile-mini-btn ${statsWindowDays===30?'primary':''}" onclick="setStatsWindow(30)">30j</button>
-        <button class="profile-mini-btn ${statsWindowDays===0?'primary':''}" onclick="setStatsWindow(0)">All</button>
-      </div>
-      <div class="mise-section-title" style="margin-bottom:8px;">COURBE JOURNALIÈRE (NET)</div>
-      ${dailyEntries.length ? dailyEntries.map(([day, v]) => {
-        const n = Number(v?.net || 0);
-        const w = (Math.abs(n) / maxDailyAbs) * 100;
-        const cls = n >= 0 ? 'pos' : 'neg';
-        return `<div class="stats-chart-row">
-          <div class="stats-chart-label">${escapeHtml(day)}</div>
-          <div class="stats-chart-bar"><div class="stats-chart-fill ${cls}" style="width:${w.toFixed(2)}%"></div></div>
-          <div class="stats-chart-val" style="color:${n >= 0 ? 'var(--green)' : 'var(--red)'}">${n >= 0 ? '+' : ''}${fmtVirtual(n)}</div>
-        </div>`;
-      }).join('') : `<div class="bj-rec">Pas encore assez de sessions pour afficher une courbe.</div>`}
-    </div>
-    <div class="stats-chart-wrap" style="margin-top:12px;">
-      <div class="mise-section-title" style="margin-bottom:8px;">HISTOGRAMME DES SESSIONS (HEURES)</div>
-      ${hourEntries.filter((x) => x.v > 0).map((x) => {
-        const w = (x.v / maxHour) * 100;
-        return `<div class="stats-chart-row">
-          <div class="stats-chart-label">${String(x.h).padStart(2, '0')}h</div>
-          <div class="stats-chart-bar"><div class="stats-chart-fill pos" style="width:${w.toFixed(2)}%"></div></div>
-          <div class="stats-chart-val">${x.v} session(s)</div>
-        </div>`;
-      }).join('') || `<div class="bj-rec">Aucune session enregistrée pour l’histogramme.</div>`}
-    </div>
-    <div class="stats-chart-wrap" style="margin-top:12px;">
-      <div class="mise-section-title" style="margin-bottom:8px;">TABLEAU MULTIPLICATEURS DAILY (PAR RANG)</div>
-      <div class="table-wrap">
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th style="text-align:left;padding:8px;">Rang</th>
-              <th style="text-align:left;padding:8px;">Multiplicateur daily</th>
-              <th style="text-align:left;padding:8px;">Wager requis</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rankDropTable.map((r) => `
-              <tr>
-                <td style="padding:8px;border-top:1px solid var(--border);">${escapeHtml(r.rank)}</td>
-                <td style="padding:8px;border-top:1px solid var(--border);">x${r.factor.toFixed(2)}</td>
-                <td style="padding:8px;border-top:1px solid var(--border);">${fmtVirtual(r.wagerRequired)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-function setStatsWindow(days) {
-  const d = Number(days || 0);
-  statsWindowDays = d <= 0 ? 0 : (d <= 7 ? 7 : 30);
-  renderStatsPage();
-}
+// [stats] — extrait dans scripts/pages/stats.js (LAZY_PAGE_SCRIPTS)
 
 // [jeux] — extrait dans scripts/pages/mini-jeux.js (LAZY_PAGE_SCRIPTS)
 
@@ -8162,7 +9941,6 @@ async function initV101() {
   refreshCurrencyInline();
   renderProfileBadge();
   populateBonusFilterPresetsSelect();
-  populateOpenerProfilesSelect();
   const gsi = document.getElementById('global-search-input');
   if (gsi) {
     gsi.addEventListener('input', () => {
@@ -8181,8 +9959,20 @@ async function initV101() {
     initial = 'hunt';
   }
   switchPage(initial, { replace: true, huntTab: initialHuntTab });
+  consumeSlotPrefillFromUrl();
 
-  // Back/forward navigateur : restaure la page sans re-pousser l'historique.
+  await loadLazyPageScript('home').catch(() => {});
+  refreshMaintenanceConfig(true).catch(() => {});
+  startMaintenancePolling();
+  if (typeof maybeShowOnboarding === 'function') maybeShowOnboarding();
+  ensureNotifBellInHeader();
+  checkInAppNotifications().catch(() => {});
+  if (!window.__hmNotifPollBound) {
+    window.__hmNotifPollBound = true;
+    setInterval(() => { checkInAppNotifications().catch(() => {}); }, 5 * 60 * 1000);
+  }
+
+  // Back/forward navigateur
   if (!window.__bhPopStateBound) {
     window.__bhPopStateBound = true;
     window.addEventListener('popstate', (e) => {
@@ -8191,6 +9981,7 @@ async function initV101() {
       switchPage(page, { skipHistory: true, huntTab });
     });
   }
+  initPwaInstallPrompt();
 }
 
 // Le script est chargé avant une partie du HTML: on déclenche l'init v1.01
@@ -8269,6 +10060,13 @@ window.addEventListener('DOMContentLoaded', () => {
   initHuntHubTabs();
   initModalA11yObserver();
   updateCatalogModeHint();
+  window.addEventListener('message', (ev) => {
+    if (!ev?.data || ev.data.type !== 'hm-streamer-hud-close') return;
+    setStreamerOverlayEnabled(false);
+    const t = document.getElementById('opener-streamer-toggle');
+    if (t) t.checked = false;
+    closeStreamerHudWin();
+  });
   if (!window.__hmPersistBalanceBound) {
     window.__hmPersistBalanceBound = true;
     const flushBalanceToDisk = () => {
@@ -8321,14 +10119,26 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   document.addEventListener('click', (e) => {
     if (Date.now() - Number(profileMenuJustOpenedAt || 0) < 260) return;
-    const wrap = document.getElementById('profile-wrap');
     const menu = document.getElementById('profile-menu');
+    const wrap = document.getElementById('profile-wrap');
+    const badge = e.target && e.target.closest ? e.target.closest('#profile-wrap .profile-badge') : null;
+    if (badge) return;
     if (menu && !menu.classList.contains('hidden') && menu.contains(e.target)) return;
-    if (wrap && !wrap.contains(e.target)) closeProfileMenu();
+    if (profileMenuIsOpen) closeProfileMenu();
+    else if (wrap && !wrap.contains(e.target) && menu && !menu.classList.contains('hidden')) closeProfileMenu();
   });
   window.addEventListener('resize', () => {
     const menu = document.getElementById('profile-menu');
     if (menu && !menu.classList.contains('hidden')) positionProfileMenu();
+  });
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('notif-panel');
+    const wrap = document.getElementById('header-notif-wrap');
+    if (!panel || panel.classList.contains('hidden')) return;
+    if (wrap && wrap.contains(e.target)) return;
+    panel.classList.add('hidden');
+    const btn = document.getElementById('notif-bell-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
   });
   document.addEventListener('error', (e) => {
     const el = e?.target;

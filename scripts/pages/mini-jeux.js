@@ -26,6 +26,8 @@ if (!window.__hmStakePreview) window.__hmStakePreview = Object.create(null);
 // → déclarés dans roue-depot.js (chargé lazily quand deposit_wheel est ouvert)
 
 function renderGamesLobby() {
+  if (typeof renderGamesModeBanner === 'function') renderGamesModeBanner();
+  if (typeof renderWeeklyObjectivesPanel === 'function') renderWeeklyObjectivesPanel();
   const grid = document.getElementById('games-lobby');
   if (!grid) return;
   if (grid.children.length === GAMES.length) {
@@ -52,6 +54,7 @@ function refundPendingStakePreviews(gameId) {
   delete window.__hmStakePreview[gameKey];
   if (total <= 0) return;
   if (typeof isCloudUser === 'function' && isCloudUser() && currentUser) {
+    if (typeof notePendingCloudBalanceDelta === 'function') notePendingCloudBalanceDelta(currentUser.id, total);
     currentUser.balance = Math.max(0, Number(currentUser.balance || 0) + total);
     if (typeof saveSession === 'function') saveSession(currentUser);
     if (typeof renderProfileBadge === 'function') renderProfileBadge();
@@ -152,6 +155,7 @@ function previewStakeDeduction(game, bet) {
   if (!Array.isArray(window.__hmStakePreview[gameKey])) window.__hmStakePreview[gameKey] = [];
   window.__hmStakePreview[gameKey].push(stake);
   if (isCloudUser()) {
+    notePendingCloudBalanceDelta(currentUser?.id, -stake);
     currentUser.balance = Math.max(0, Number(currentUser?.balance || 0) - stake);
     saveSession(currentUser);
     updateLobbyBalance();
@@ -196,6 +200,8 @@ function winGame(bet, multiplier) {
   trackPlayerGameStats(String(gameId), stake, prize);
   if (isCloudUser()) {
     const optimisticDelta = stakeState.hadPreview ? prize : (prize - stake);
+    if (stakeState.hadPreview) notePendingCloudBalanceDelta(currentUser?.id, prize);
+    else notePendingCloudBalanceDelta(currentUser?.id, optimisticDelta);
     currentUser.balance = Math.max(0, Number(currentUser?.balance || 0) + optimisticDelta);
     saveSession(currentUser);
     updateLobbyBalance();
@@ -220,6 +226,10 @@ function winGame(bet, multiplier) {
   else if (m > 1.01) casinoSfx('win');
   else if (prize > 0) casinoSfx('coin');
   if (typeof gameWinFx === 'function' && m > 1.01) gameWinFx(prize, m);
+  if (gameId !== 'blackjack' && gameId !== 'roulette') {
+    const profit = prize - stake;
+    pushGameHistory(gameId, `${profit >= 0 ? 'Gagné' : 'Perdu'} | ${profit >= 0 ? '+' : ''}${fmtVirtual(profit)} | mise ${fmtVirtual(stake)}`);
+  }
   return prize;
 }
 function loseGame(bet, sfxType) {
@@ -242,6 +252,9 @@ function loseGame(bet, sfxType) {
   }
   updateLobbyBalance();
   casinoSfx(sfxType || 'lose');
+  if (gameId !== 'blackjack' && gameId !== 'roulette') {
+    pushGameHistory(gameId, `Perdu | -${fmtVirtual(stake)} | mise ${fmtVirtual(stake)}`);
+  }
 }
 
 function playGame() {
@@ -261,16 +274,16 @@ function renderGameControls(id) {
       <div class="gc-title">Balance disponible</div>
       <div class="gc-value small"><span id="game-controls-balance">${fmtVirtual(getUserBalance())}</span></div>
     </div>
-    <div class="gc-block bj-gc-hint">
-      <div class="gc-title">Mise sur la table</div>
+    <div class="gc-block">
+      <div class="gc-title">Mise totale</div>
       <div class="gc-value small bj-gc-bet-total"><span id="bj-gc-main-total">0,00</span></div>
-      <div class="bj-gc-hint-txt">Place tes jetons · Rebet / ×2 / Effacer · puis DISTRIBUER</div>
+      <div class="bj-phase-sidebar" id="bj-sidebar-phase">FAITES VOS JEUX</div>
     </div>
     <button class="play-btn" id="main-play-btn" type="button" onclick="playGame()">DISTRIBUER</button>
     <div class="gc-block bj-bet-tools" id="bj-bet-tools">
       <div class="gc-title">Raccourcis mise</div>
       <div class="bj-bet-tools-row">
-        <button type="button" class="bet-btn bj-tool-btn" onclick="bjRebetLast()">↻ Rebet</button>
+        <button type="button" class="bet-btn bj-tool-btn" onclick="bjRebetLast()">Rebet</button>
         <button type="button" class="bet-btn bj-tool-btn" onclick="bjDoubleTableBets()">×2</button>
         <button type="button" class="bet-btn bj-tool-btn" onclick="bjClearTable()">Effacer</button>
       </div>
@@ -328,7 +341,13 @@ function renderGameControls(id) {
         <button class="bet-btn side-chip-btn" onclick="placeBjSideChip('21p3')">Jeton +</button>
       </div>
     </div>
+    <div class="gc-block game-history-block" style="display:${id === 'roulette' || id === 'blackjack' ? 'none' : 'block'};">
+      <div class="gc-title">10 dernières parties</div>
+      <div class="game-round-history" id="game-round-history"></div>
+      <button type="button" class="bet-btn bj-tool-btn" style="margin-top:8px;width:100%;" onclick="clearGameHistory('${id}')">Effacer l’historique</button>
+    </div>
   `;
+  if (id !== 'blackjack' && id !== 'roulette') renderGameHistory(id);
 }
 
 function loadGameUI(id) {
@@ -339,57 +358,67 @@ function loadGameUI(id) {
   renderGameControls(id);
 
   const UIs = {
-    blackjack: `<div class="antho-bj-stage">
-      <button class="antho-bj-reset" onclick="loadGameUI('blackjack')" title="Reset">↻</button>
-      <div class="bj-phase-banner" id="bj-betting-phase">FAITES VOS JEUX</div>
-      <div class="mini-bj-result" id="mini-bj-result">Place tes jetons sur la table</div>
+    blackjack: `<div class="antho-bj-stage bj-stage">
+      <button class="antho-bj-reset bj-reset" onclick="loadGameUI('blackjack')" title="Nouvelle table">↻</button>
+      <div class="bj-hud">
+        <div class="bj-phase" id="bj-betting-phase">FAITES VOS JEUX</div>
+        <div class="mini-bj-result" id="mini-bj-result"></div>
+      </div>
       <div class="mini-bj-side-badge" id="mini-bj-side-badge"></div>
-      <div class="antho-bj-table">
-        <div class="antho-bj-seat antho-bj-seat--dealer">
-          <div class="antho-bj-pill"><strong>Dealer</strong> <span class="score" id="antho-dealer-score">0</span></div>
-          <div class="antho-bj-cards mini-bj-cards" id="mini-bj-dealer-cards"></div>
-          <div class="mini-bj-total" id="mini-bj-dealer-total" style="display:none;">0</div>
-        </div>
-        <div class="bj-betting-zone">
-        <div class="bj-bet-spot bj-bet-spot--side" data-bet-target="pairs">
-          <span class="bj-bet-spot-label">PERFECT PAIRS</span>
-          <div class="bj-bet-spot-stack" id="bj-stack-pairs"></div>
-          <span class="bj-bet-spot-amt" id="bj-spot-pairs">0</span>
-        </div>
-        <div class="bj-bet-spot bj-bet-spot--main" data-bet-target="main">
-          <span class="bj-bet-spot-label">MISE PRINCIPALE</span>
-          <div class="bj-bet-spot-stack" id="bj-stack-main"></div>
-          <span class="bj-bet-spot-amt" id="bj-spot-main">0</span>
-        </div>
-        <div class="bj-bet-spot bj-bet-spot--side" data-bet-target="21p3">
-          <span class="bj-bet-spot-label">21+3</span>
-          <div class="bj-bet-spot-stack" id="bj-stack-21p3"></div>
-          <span class="bj-bet-spot-amt" id="bj-spot-21p3">0</span>
+      <div class="bj-table">
+        <div class="bj-felt">
+          <p class="bj-rules">Blackjack 3:2 · Dealer stand soft 17</p>
+          <div class="bj-layout">
+            <div class="bj-hand bj-hand--dealer">
+              <span class="bj-hand-label">Croupier</span>
+              <div class="antho-bj-cards mini-bj-cards" id="mini-bj-dealer-cards"></div>
+              <div class="bj-score" id="antho-dealer-score">0</div>
+              <div class="mini-bj-total" id="mini-bj-dealer-total" style="display:none;">0</div>
+            </div>
+            <div class="bj-bets">
+              <div class="bj-bet-spot bj-bet-spot--side" data-bet-target="pairs">
+                <div class="bj-bet-spot-stack" id="bj-stack-pairs"></div>
+                <span class="bj-bet-spot-amt" id="bj-spot-pairs"></span>
+              </div>
+              <div class="bj-bet-spot bj-bet-spot--main" data-bet-target="main">
+                <div class="bj-bet-spot-stack" id="bj-stack-main"></div>
+                <span class="bj-bet-spot-amt" id="bj-spot-main"></span>
+              </div>
+              <div class="bj-bet-spot bj-bet-spot--side" data-bet-target="21p3">
+                <div class="bj-bet-spot-stack" id="bj-stack-21p3"></div>
+                <span class="bj-bet-spot-amt" id="bj-spot-21p3"></span>
+              </div>
+            </div>
+            <div class="bj-insurance-bar" id="bj-insurance-bar">
+              <span class="bj-insurance-txt">Assurance ? Le croupier montre un As</span>
+              <button type="button" class="bj-insurance-btn take" onclick="bjResolveInsurance(true)">Assurer (½ mise)</button>
+              <button type="button" class="bj-insurance-btn skip" onclick="bjResolveInsurance(false)">Passer</button>
+            </div>
+            <div class="bj-table-actions" id="bj-table-actions">
+              <button type="button" class="bj-tbl-act hit" id="bj-tbl-hit" onclick="miniBjHit()" disabled>Tirer</button>
+              <button type="button" class="bj-tbl-act stand" id="bj-tbl-stand" onclick="miniBjStand()" disabled>Rester</button>
+              <button type="button" class="bj-tbl-act double" id="bj-tbl-double" onclick="miniBjDouble()" disabled>Doubler</button>
+              <button type="button" class="bj-tbl-act split" id="bj-tbl-split" onclick="miniBjSplit()" disabled>Diviser</button>
+            </div>
+            <div class="bj-hand bj-hand--player">
+              <span class="bj-hand-label">Joueur</span>
+              <div class="antho-bj-cards mini-bj-cards" id="mini-bj-player-cards"></div>
+              <div class="bj-score" id="antho-player-score">0</div>
+              <div class="mini-bj-total" id="mini-bj-player-total" style="display:none;">0</div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="bj-insurance-bar" id="bj-insurance-bar">
-        <span class="bj-insurance-txt">Assurance ? Le croupier montre un As</span>
-        <button type="button" class="bj-insurance-btn take" onclick="bjResolveInsurance(true)">Assurer (½ mise)</button>
-        <button type="button" class="bj-insurance-btn skip" onclick="bjResolveInsurance(false)">Non merci</button>
-      </div>
-      <div class="bj-table-actions" id="bj-table-actions">
-        <button type="button" class="bj-tbl-act hit" id="bj-tbl-hit" onclick="miniBjHit()" disabled>TIRER</button>
-        <button type="button" class="bj-tbl-act stand" id="bj-tbl-stand" onclick="miniBjStand()" disabled>RESTER</button>
-        <button type="button" class="bj-tbl-act double" id="bj-tbl-double" onclick="miniBjDouble()" disabled>DOUBLER</button>
-        <button type="button" class="bj-tbl-act split" id="bj-tbl-split" onclick="miniBjSplit()" disabled>DIVISER</button>
-      </div>
-        <div class="antho-bj-seat antho-bj-seat--player">
-          <div class="antho-bj-pill"><strong>${escapeHtml(currentUser?.displayName || currentUser?.username || 'Joueur')}</strong> <span class="score" id="antho-player-score">0</span></div>
-          <div class="antho-bj-cards mini-bj-cards" id="mini-bj-player-cards"></div>
-          <div class="mini-bj-total" id="mini-bj-player-total" style="display:none;">0</div>
-        </div>
-      </div>
-      <div class="bj-chip-rack-wrap">
+      <div class="bj-dock">
         <div class="bj-chip-rack" id="bj-chip-rack">${buildBjChipRackHtml()}</div>
-        <button type="button" class="bj-undo-chip-btn" id="bj-undo-chip-btn" onclick="undoLastBjChip()" disabled>↩ Annuler le dernier jeton</button>
+        <button type="button" class="bj-undo-chip-btn" id="bj-undo-chip-btn" onclick="undoLastBjChip()" disabled>Annuler le dernier jeton</button>
       </div>
-      <div class="bj-dealer-say" id="mini-bj-dealer-say">Bienvenue — fais tes jeux.</div>
-      <div class="bj-history-panel" id="mini-bj-history"></div>
+      <p class="bj-tip" id="mini-bj-dealer-say">Place tes jetons sur la table, puis DISTRIBUER.</p>
+      <div class="bj-history-panel">
+        <div class="game-history-head">10 dernières parties</div>
+        <div id="mini-bj-history"></div>
+        <button type="button" class="bet-btn bj-tool-btn" style="margin-top:8px;" onclick="clearGameHistory('blackjack')">Effacer l’historique</button>
+      </div>
       <button id="mini-bj-hit" style="display:none;" onclick="miniBjHit()"></button>
       <button id="mini-bj-stand" style="display:none;" onclick="miniBjStand()"></button>
     </div>`,
@@ -554,7 +583,10 @@ function loadGameUI(id) {
         <button class="bet-btn" onclick="rouletteRebet()">REBET</button>
         <button class="bet-btn" onclick="clearGameHistory('roulette')">VIDER HISTORIQUE</button>
       </div>
-      <div class="game-history" id="roulette-history"></div>
+      <div class="game-history-wrap">
+        <div class="game-history-head">10 dernières parties</div>
+        <div class="game-history" id="roulette-history"></div>
+      </div>
     </div>`,
 
     deposit_wheel: `<div class="deposit-wheel-wrap">
@@ -1279,46 +1311,54 @@ function plinkoPressClick(e) {
 
 let miniBjState = null;
 const BJ_CHIP_DENOMS = [
+  { value: 1, tier: 'std' },
+  { value: 5, tier: 'std' },
   { value: 10, tier: 'std' },
-  { value: 50, tier: 'std' },
+  { value: 25, tier: 'std' },
   { value: 100, tier: 'std' },
-  { value: 500, tier: 'std' },
-  { value: 1000, tier: 'std' },
-  { value: 2500, tier: 'vip' },
-  { value: 5000, tier: 'vip' },
-  { value: 10000, tier: 'vip' },
+  { value: 500, tier: 'vip' },
 ];
-let selectedBjChip = 10;
+let selectedBjChip = 5;
 let bjBetHistory = [];
 let bjBettingOpen = true;
 let bjLastBetSnapshot = null;
 const GAME_HISTORY = { blackjack: [], roulette: [], crash: [], keno: [], mines: [], plinko: [], flip: [], dice: [], hilo: [], chicken: [], pump: [], limbo: [] };
+const HISTORY_MAX = 10;
 loadGameHistoryStore();
 function loadGameHistoryStore() {
   try {
     const raw = JSON.parse(localStorage.getItem(GAME_HISTORY_KEY) || '{}');
     Object.keys(GAME_HISTORY).forEach((k) => {
       const arr = Array.isArray(raw[k]) ? raw[k] : [];
-      GAME_HISTORY[k] = arr.slice(0, 20).map((x) => String(x));
+      GAME_HISTORY[k] = arr.slice(0, HISTORY_MAX).map((x) => String(x));
     });
   } catch (_) {}
 }
 function saveGameHistoryStore() {
   try {
     const payload = {};
-    Object.keys(GAME_HISTORY).forEach((k) => { payload[k] = (GAME_HISTORY[k] || []).slice(0, 20); });
+    Object.keys(GAME_HISTORY).forEach((k) => { payload[k] = (GAME_HISTORY[k] || []).slice(0, HISTORY_MAX); });
     localStorage.setItem(GAME_HISTORY_KEY, JSON.stringify(payload));
   } catch (_) {}
 }
+function formatGameHistoryRows(rows) {
+  return rows.map((x) => `<div class="game-history-row">${escapeHtml(String(x))}</div>`).join('');
+}
 function renderGameHistory(gameId) {
-  const rows = (GAME_HISTORY[gameId] || []).map((x) => String(x));
+  const rows = (GAME_HISTORY[gameId] || []).slice(0, HISTORY_MAX).map((x) => String(x));
   if (gameId === 'blackjack') {
     const el = document.getElementById('mini-bj-history');
-    if (el) el.innerHTML = rows.map((x) => `<div>${x}</div>`).join('');
+    if (el) el.innerHTML = formatGameHistoryRows(rows);
   }
   if (gameId === 'roulette') {
     const rEl = document.getElementById('roulette-history');
-    if (rEl) rEl.innerHTML = rows.map((x) => `<div>${x}</div>`).join('');
+    if (rEl) rEl.innerHTML = formatGameHistoryRows(rows);
+  }
+  const generic = document.getElementById('game-round-history');
+  if (generic && gameId !== 'blackjack' && gameId !== 'roulette') {
+    generic.innerHTML = rows.length
+      ? formatGameHistoryRows(rows)
+      : '<div class="game-history-empty">Aucune partie encore.</div>';
   }
 }
 function clearGameHistory(gameId) {
@@ -1361,7 +1401,7 @@ function playJackpotBoost(intensity = 1) {
 function pushGameHistory(gameId, text) {
   if (!GAME_HISTORY[gameId]) GAME_HISTORY[gameId] = [];
   GAME_HISTORY[gameId].unshift(`[${new Date().toLocaleTimeString('fr-FR')}] ${text}`);
-  GAME_HISTORY[gameId] = GAME_HISTORY[gameId].slice(0, 20);
+  GAME_HISTORY[gameId] = GAME_HISTORY[gameId].slice(0, HISTORY_MAX);
   saveGameHistoryStore();
   renderGameHistory(gameId);
 }
@@ -1369,32 +1409,22 @@ function pushGameHistory(gameId, text) {
 // playGameSfx → déplacé dans app.js pour être disponible sans dépendre du chargement de mini-jeux.js
 function formatBjChipLabel(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '10';
-  if (n >= 10000) return '10K';
+  if (!Number.isFinite(n)) return '1';
   if (n >= 1000 && n % 1000 === 0) return `${n / 1000}K`;
-  return String(n);
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(1).replace(/\.0$/, '');
 }
 function buildBjChipFaceHtml(value, { compact = false } = {}) {
   const denom = resolveBjChipDenom(value);
-  const meta = BJ_CHIP_DENOMS.find((c) => c.value === denom) || BJ_CHIP_DENOMS[0];
   const label = formatBjChipLabel(denom);
   const compactCls = compact ? ' bj-casino-chip-face--compact' : '';
-  const gdLogo = denom <= 10 ? './assets/gamdom-icon-transparent.png' : './assets/gamdom-logo-white-transparent.png';
   return `<span class="bj-casino-chip-face bj-chip-${denom}${compactCls}" data-denom="${denom}" aria-hidden="true">
-    <span class="bj-chip-inner">
-      <span class="bj-chip-logos" aria-hidden="true">
-        <img class="bj-chip-logo bj-chip-logo--ht" src="./assets/bj-chip-hugotaslot.svg" alt="" draggable="false" decoding="async">
-        <img class="bj-chip-logo bj-chip-logo--19" src="./assets/19enplein-logo.png" alt="" draggable="false" decoding="async">
-        <img class="bj-chip-logo bj-chip-logo--gd" src="${gdLogo}" alt="" draggable="false" decoding="async">
-      </span>
-      <span class="bj-chip-val">${label}</span>
-      ${meta.tier === 'vip' ? '<span class="bj-chip-vip-mark" aria-hidden="true">★</span>' : ''}
-    </span>
+    <span class="bj-chip-val">${label}</span>
   </span>`;
 }
 function buildBjChipRackHtml() {
   return BJ_CHIP_DENOMS.map((c, i) => `
-    <button type="button" class="bj-casino-chip bj-casino-chip--${c.tier}${i === 0 ? ' active' : ''}"
+    <button type="button" class="bj-casino-chip bj-casino-chip--${c.tier}${c.value === selectedBjChip ? ' active' : ''}"
       data-chip="${c.value}" draggable="true" title="Jeton ${c.value}"
       onclick="selectBjChip(${c.value}, this); event.stopPropagation();" aria-label="Jeton ${c.value}">
       ${buildBjChipFaceHtml(c.value)}
@@ -1403,7 +1433,7 @@ function buildBjChipRackHtml() {
 }
 function resolveBjChipDenom(amount) {
   const n = Number(amount);
-  if (!Number.isFinite(n) || n <= 0) return 10;
+  if (!Number.isFinite(n) || n <= 0) return 1;
   if (BJ_CHIP_DENOMS.some((c) => c.value === n)) return n;
   const sorted = BJ_CHIP_DENOMS.map((c) => c.value).sort((a, b) => a - b);
   return sorted.reduce((best, cur) => (Math.abs(cur - n) < Math.abs(best - n) ? cur : best), sorted[0]);
@@ -1413,7 +1443,7 @@ function animateBjChipToSpot(chipBtn, spotEl, amount) {
   const from = chipBtn.getBoundingClientRect();
   const to = spotEl.getBoundingClientRect();
   const denom = resolveBjChipDenom(amount);
-  const isVip = denom >= 2500;
+  const isVip = denom >= 500;
   const size = isVip ? 48 : 42;
   const fly = document.createElement('div');
   fly.className = 'bj-chip-fly';
@@ -1437,7 +1467,7 @@ function setDealerTalk(msg) {
   if (el) el.textContent = msg;
 }
 function selectBjChip(val, btn) {
-  selectedBjChip = Number(val) || 10;
+  selectedBjChip = Number(val) || 5;
   document.querySelectorAll('.bj-casino-chip').forEach((x) => x.classList.remove('active'));
   if (btn) btn.classList.add('active');
   casinoSfx('chip');
@@ -1456,9 +1486,9 @@ function refreshBjSpots() {
   const sMain = document.getElementById('bj-spot-main');
   const sPairs = document.getElementById('bj-spot-pairs');
   const s213 = document.getElementById('bj-spot-21p3');
-  if (sMain) sMain.textContent = fmt(main);
-  if (sPairs) sPairs.textContent = fmt(pairs);
-  if (s213) s213.textContent = fmt(p213);
+  if (sMain) sMain.textContent = main > 0 ? fmt(main) : '';
+  if (sPairs) sPairs.textContent = pairs > 0 ? fmt(pairs) : '';
+  if (s213) s213.textContent = p213 > 0 ? fmt(p213) : '';
   renderBjSpotStack('main', main);
   renderBjSpotStack('pairs', pairs);
   renderBjSpotStack('21p3', p213);
@@ -1505,10 +1535,16 @@ function addToBjBet(target, amount) {
 }
 function setBjBettingOpen(open) {
   bjBettingOpen = !!open;
+  const phaseText = bjBettingOpen ? 'FAITES VOS JEUX' : 'EN COURS';
   const phase = document.getElementById('bj-betting-phase');
   if (phase) {
-    phase.textContent = bjBettingOpen ? 'FAITES VOS JEUX' : 'JEUX FERMÉS';
+    phase.textContent = phaseText;
     phase.classList.toggle('is-closed', !bjBettingOpen);
+  }
+  const sidebarPhase = document.getElementById('bj-sidebar-phase');
+  if (sidebarPhase) {
+    sidebarPhase.textContent = phaseText;
+    sidebarPhase.classList.toggle('is-closed', !bjBettingOpen);
   }
   document.querySelectorAll('#bj-chip-rack .bj-casino-chip').forEach((el) => {
     el.draggable = bjBettingOpen;
@@ -1595,8 +1631,10 @@ function initBjDragChips() {
     });
   }
   bjBetHistory = [];
-  selectedBjChip = 10;
-  document.querySelectorAll('.bj-casino-chip').forEach((el, i) => el.classList.toggle('active', i === 0));
+  selectedBjChip = 5;
+  document.querySelectorAll('.bj-casino-chip').forEach((el) => {
+    el.classList.toggle('active', Number(el.getAttribute('data-chip')) === selectedBjChip);
+  });
   setBjBettingOpen(true);
   refreshBjSpots();
   miniBjRefreshActions();
@@ -1787,7 +1825,11 @@ function miniBjCardHtml(c) {
   const rank = miniBjCardRank(c) || '?';
   const suit = typeof c === 'object' ? (c?.suitSymbol || '') : '';
   const color = typeof c === 'object' ? (c?.color || 'black') : 'black';
-  return `<div class="mini-bj-card ${color}"><span class="card-rank">${rank}</span><span class="card-suit">${suit}</span></div>`;
+  return `<div class="mini-bj-card ${color}">
+    <span class="card-corner card-corner--tl"><span class="card-rank">${rank}</span><span class="card-suit">${suit}</span></span>
+    <span class="card-center-suit" aria-hidden="true">${suit}</span>
+    <span class="card-corner card-corner--br"><span class="card-rank">${rank}</span><span class="card-suit">${suit}</span></span>
+  </div>`;
 }
 function miniBjTotal(cards) {
   let total = cards.reduce((s, c) => s + miniBjCardValue(c), 0);
@@ -1803,7 +1845,7 @@ function miniBjRender(revealDealer = false) {
   const playerTotalEl = document.getElementById('mini-bj-player-total');
   if (!dealerCardsEl || !playerCardsEl) return;
   dealerCardsEl.innerHTML = miniBjState.dealer.map((c, i) => {
-    if (!revealDealer && i === 1 && miniBjState.inRound) return `<div class="mini-bj-card back">?</div>`;
+    if (!revealDealer && i === 1 && miniBjState.inRound) return `<div class="mini-bj-card back"><span class="card-back-diamond" aria-hidden="true"></span></div>`;
     return miniBjCardHtml(c);
   }).join('');
   playerCardsEl.innerHTML = miniBjState.player.map(c => miniBjCardHtml(c)).join('');

@@ -5,8 +5,9 @@ Bot Discord en relation avec le site (Supabase) pour :
 - 🎬 **Annoncer chaque nouvelle vidéo YouTube** de la chaîne HugoTaSlot
 - 🎰 **Annoncer les nouvelles sorties de slot** (auto via [SlotCatalog](https://slotcatalog.com) : même jeux neufs qu’on retrouve sur Stake, Gamdom, Shuffle, Celsius, etc. + [BigWinBoard](https://bigwinboard.com) si le flux est accessible + ajouts manuels admin)
 - 🔗 **Lier les comptes Discord ↔ HugoTaSlot** (commande `/link CODE`)
-- 📊 **Slash commands** : `/lastvideo`, `/lastslot`, `/slot`, `/call`, `/hunts`, `/leaderboard`, `/link`, `/unlink`
+- 📊 **Slash commands** : `/lastvideo`, `/lastslot`, `/slot`, `/call`, `/hunts`, `/leaderboard`, `/live`, `/link`, `/unlink`
   - **`/call`** : option **`machine`** (autocomplete sur le catalogue `jeux.json`) ; sans option = slot au hasard comme `/slot`.
+  - **`/live slug`** : ouvre un hunt public partagé (lien `/h/…` du site).
 
 Tourne **H24** sur Railway (free tier suffit). Stockage Supabase, donc accessible aussi par le site.
 
@@ -193,3 +194,59 @@ discord-bot/
 ## Licence
 
 Privé / interne au projet HugoTaSlot.
+
+---
+
+## 15. Migration vers un nouveau serveur Discord
+
+Tu changes de serveur (communauté migrée) **sans recréer le bot** : garde la même application Discord + le même déploiement Railway. Seuls les IDs Discord et l’invitation changent.
+
+### Ce qui ne change pas
+
+| Élément | Pourquoi |
+|--------|----------|
+| `DISCORD_TOKEN` / `DISCORD_CLIENT_ID` | Même application bot |
+| Supabase (`SUPABASE_*`) | Même base, annonces et liaisons |
+| Liaisons `/link` existantes | Stockées par **ID utilisateur Discord** (pas par serveur) |
+| Vidéos / slots déjà annoncées | `posted_to_discord_at` empêche de reposter l’historique |
+
+### Ce qu’il faut mettre à jour
+
+1. **Créer les salons** sur le nouveau serveur (ex. `#annonces-youtube`, `#nouvelles-slots`).
+2. **Mode développeur** activé → copier les IDs :
+   - Clic droit sur le **serveur** → Copier l’ID → `DISCORD_GUILD_ID`
+   - Clic droit sur chaque **salon** → Copier l’ID → `DISCORD_CHANNEL_YOUTUBE` / `DISCORD_CHANNEL_SLOTS`
+3. **Inviter le bot** sur le **nouveau** serveur (OAuth2 → URL Generator : scopes `bot` + `applications.commands`, permissions Send Messages, Embed Links, Attach Files, Read Message History) :
+   ```
+   https://discord.com/api/oauth2/authorize?client_id=TON_CLIENT_ID&permissions=116736&scope=bot%20applications.commands
+   ```
+   Remplace `TON_CLIENT_ID` par `DISCORD_CLIENT_ID`.
+4. **Railway** → service bot → **Variables** → modifier :
+   - `DISCORD_GUILD_ID`
+   - `DISCORD_CHANNEL_YOUTUBE`
+   - `DISCORD_CHANNEL_SLOTS`
+5. **Redéployer** (ou Restart) le service Railway pour prendre les nouvelles variables.
+6. **Ré-enregistrer les slash commands** sur le nouveau guild (obligatoire) :
+   ```powershell
+   cd discord-bot
+   railway link          # si pas déjà lié au projet
+   railway run npm run register
+   ```
+   Ou en local avec un `.env` à jour : `npm run register`.
+7. **Tester** sur le nouveau serveur :
+   - `/lastvideo`, `/slot`, `/link` (code généré sur le site)
+   - Admin site → publier une slot test → message dans `#nouvelles-slots` sous ~60 s
+8. **Ancien serveur** (optionnel) : Paramètres serveur → Intégrations → retirer le bot. Les anciennes commandes slash sur l’ancien guild disparaissent avec le bot.
+
+### Si tu recrées une **nouvelle** application Discord (nouveau bot)
+
+En plus des étapes ci-dessus : nouveau `DISCORD_TOKEN`, nouveau `DISCORD_CLIENT_ID`, mise à jour Railway, `npm run register`, invitation sur le nouveau serveur. Les joueurs **n’ont pas besoin de relier** leur compte si leur Discord est le même — les rows `discord_links` restent valides (même `discord_id`).
+
+### Dépannage
+
+| Problème | Piste |
+|----------|--------|
+| Pas de commandes `/` visibles | `DISCORD_GUILD_ID` incorrect ou `npm run register` pas relancé |
+| Bot en ligne mais pas d’annonces | Mauvais ID de salon ou bot sans accès au salon |
+| « Channel slots non configuré » dans les logs | `DISCORD_CHANNEL_SLOTS` vide ou invalide |
+| Annonces dans l’ancien salon | Railway pas redémarré après changement de variables |

@@ -8,6 +8,20 @@ import { getChannelSafe } from '../discord/client.js';
 const log = child({ mod: 'slots' });
 const LOOKBACK_HOURS = 96; // pas d'annonces sur les sorties trop vieilles au premier run
 
+function buildSlotHuntPrefillUrl(slot) {
+  const title = String(slot?.name || slot?.title || '').trim();
+  if (!title) return `${config.site.url}/hunt`;
+  const params = new URLSearchParams();
+  params.set('slotTitle', title);
+  const provider = String(slot?.provider || '').trim();
+  const image = String(slot?.image || '').trim();
+  const url = String(slot?.url || '').trim();
+  if (provider) params.set('slotProvider', provider);
+  if (image) params.set('slotImage', image);
+  if (url) params.set('slotUrl', url);
+  return `${config.site.url}/hunt?${params.toString()}`;
+}
+
 const REVIEW_HINTS = [/review/i, /slot review/i];
 const RELEASE_HINTS = [/launch/i, /release/i, /coming soon/i, /preview/i, /just released/i];
 
@@ -174,6 +188,7 @@ async function announce(slot, publishedAt, source = 'manual') {
   const ch = await getChannelSafe(config.discord.channels.slots);
   if (!ch) { log.warn('Channel slots non configuré ou introuvable'); return null; }
   const meta = SOURCE_LABELS[source] || SOURCE_LABELS.manual;
+  const huntPrefillUrl = buildSlotHuntPrefillUrl(slot);
   const embed = new EmbedBuilder()
     .setColor(0xA188A6)
     .setAuthor({ name: meta.author })
@@ -182,7 +197,12 @@ async function announce(slot, publishedAt, source = 'manual') {
   if (slot.url) embed.setURL(slot.url);
   if (slot.provider) embed.addFields({ name: 'Provider', value: String(slot.provider), inline: true });
   if (slot.image) embed.setImage(String(slot.image));
-  if (slot.summary) embed.setDescription(String(slot.summary).slice(0, 380));
+  let desc = slot.summary ? String(slot.summary).slice(0, 280) : '';
+  if (huntPrefillUrl) {
+    const huntLine = `[➕ Ajouter au hunt sur HugoTaSlot](${huntPrefillUrl})`;
+    desc = desc ? `${desc}\n\n${huntLine}` : huntLine;
+  }
+  if (desc) embed.setDescription(desc.slice(0, 380));
   embed.setFooter({ text: meta.footer });
   const content = source === 'manual' ? '🎰 **Annonce HugoTaSlot**' : '🎰 **Nouvelle sortie repérée !**';
   try {
