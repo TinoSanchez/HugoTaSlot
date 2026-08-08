@@ -5,8 +5,8 @@ Bot Discord en relation avec le site (Supabase) pour :
 - 🎬 **Annoncer chaque nouvelle vidéo YouTube** de la chaîne HugoTaSlot
 - 🎰 **Annoncer les nouvelles sorties de slot** (auto via [SlotCatalog](https://slotcatalog.com) : même jeux neufs qu’on retrouve sur Stake, Gamdom, Shuffle, Celsius, etc. + [BigWinBoard](https://bigwinboard.com) si le flux est accessible + ajouts manuels admin)
 - 🔗 **Lier les comptes Discord ↔ HugoTaSlot** (commande `/link CODE`)
-- 📊 **Slash commands** : `/lastvideo`, `/lastslot`, `/slot`, `/call`, `/hunts`, `/leaderboard`, `/live`, `/link`, `/unlink`
-  - **`/call`** : option **`machine`** (autocomplete sur le catalogue `jeux.json`) ; sans option = slot au hasard comme `/slot`.
+- 📊 **Slash commands** : `/lastvideo`, `/lastslot`, `/slot`, `/machine`, `/calls-*`, `/hunts`, `/leaderboard`, `/live`, `/link`, `/unlink`, `/prono-*`
+  - **`/machine`** : option **`nom`** (autocomplete sur le catalogue `jeux.json`) ; sans option = slot au hasard comme `/slot`.
   - **`/live slug`** : ouvre un hunt public partagé (lien `/h/…` du site).
 
 Tourne **H24** sur Railway (free tier suffit). Stockage Supabase, donc accessible aussi par le site.
@@ -34,6 +34,7 @@ Active **Mode développeur** dans Discord (Paramètres → Avancés → Mode dé
   (Optionnel mais **recommandé** : permet d'avoir les commandes instantanément. Sans ça, propagation jusqu'à 1h.)
 - **Channel YouTube** : clic droit sur le salon où poster les vidéos → *Copier l'ID* → `DISCORD_CHANNEL_YOUTUBE`
 - **Channel Slots** : idem pour le salon des sorties de slots → `DISCORD_CHANNEL_SLOTS`
+- **Channel Rumble** : idem pour le salon Rumble → `DISCORD_CHANNEL_RUMBLE`
 
 ## 3. Récupérer l'ID de la chaîne YouTube
 
@@ -50,6 +51,82 @@ YOUTUBE_CHANNEL_LABEL=19enplein
 Résolution manuelle : `node scripts/resolve-youtube-channel.mjs @19enpleinn`
 
 > Pas besoin de clé API YouTube : flux RSS Atom public (`feeds/videos.xml?channel_id=UC…`).
+
+### Rumble
+
+Chaîne actuelle : **[rumble.com/user/19enplein](https://rumble.com/user/19enplein)**
+
+```env
+DISCORD_CHANNEL_RUMBLE=1493346923254382743
+RUMBLE_USER_SLUG=19enplein
+RUMBLE_CHANNEL_LABEL=19enplein
+CRON_RUMBLE=*/10 * * * *
+```
+
+Test manuel : `railway run node scripts/test-rumble-announce.mjs`
+
+Historique stocké dans `bot_state` (`key = rumble_videos`). Table SQL optionnelle : `discord-bot/sql/06_rumble_videos.sql`.
+
+### Rumble LIVE
+
+Salon dédié aux annonces **en direct** (`@everyone` dès qu’un live démarre).
+
+```env
+DISCORD_CHANNEL_RUMBLE_LIVE=1435738454733623549
+CRON_RUMBLE_LIVE=*/3 * * * *
+# Recommandé : URL API depuis https://rumble.com/account/livestream-api
+RUMBLE_LIVE_API_URL=
+```
+
+Test manuel : `railway run node scripts/test-rumble-live-announce.mjs`
+
+Sans API, le bot détecte un live via la page chaîne (`live: true` dans le flux). Avec `RUMBLE_LIVE_API_URL`, la détection est plus fiable et instantanée.
+
+### Pronos football (matchs)
+
+Salon dédié — verrouillé pour les non-admins pendant qu’un match est ouvert.
+
+```env
+DISCORD_CHANNEL_PRONOS=1524512308406255807
+```
+
+**Perms bot requises sur le salon** : `View Channel`, `Send Messages`, `Embed Links`, `Manage Channel` (pour verrouiller/déverrouiller le salon), `Read Message History`, `Manage Messages` (pour remplacer un ancien prono).
+
+Commandes :
+
+| Commande | Qui | Où | Effet |
+|----------|-----|----|-------|
+| `/prono-start equipe_a:<A> equipe_b:<B>` | Admin | n’importe où | Ouvre un match, verrouille le salon pronos, poste l’annonce `@everyone` |
+| `/prono score_a:<n> score_b:<n>` | Tout le monde | n’importe où | Enregistre / remplace le prono, poste dans le salon pronos |
+| `/prono-close score_a:<n> score_b:<n>` | Admin | n’importe où | Annonce résultat + gagnants (score exact), déverrouille le salon |
+| `/prono-status` | Admin | n’importe où | Affiche l’état du match en cours (éphémère) |
+
+État stocké dans `bot_state` (clé `active_prono_match`). Un seul match actif à la fois.
+
+### Calls machines (tirage)
+
+Salon dédié — **pas de session** : chacun peut envoyer son call à tout moment ; tout se remet à zéro après l’annonce du gagnant.
+
+```env
+DISCORD_CHANNEL_CALLS=1527322822207082558
+```
+
+**Perms bot** (comme les pronos) : `View Channel`, `Send Messages`, `Embed Links`, `Manage Channel`, `Read Message History`, `Manage Messages`.
+
+Commandes :
+
+| Commande | Qui | Effet |
+|----------|-----|-------|
+| `/calls machine:<slot>` | Tout le monde | Poste un message dans le salon (1 call / personne, le dernier remplace) |
+| `/calls-lock` | Admin | Ferme temporairement les calls (avant tirage) |
+| `/calls-unlock` | Admin | Rouvre les calls |
+| `/calls-close` | Admin | Tire un gagnant + prix d’achat (20–100 €), puis **reset** du pool + messages |
+| `/calls-status` | Admin | Liste des calls en cours (éphémère) |
+
+À l’annonce, l’embed rappelle : abonné sur **au moins un réseau** → **20 %** du profit vs prix d’achat ; affilié **Gamdom** → **50 %**.
+
+État stocké dans `bot_state` (clé `active_machine_calls`).  
+`/machine` reste le tirage fun hors concours (hasard / autocomplete).
 
 ## 4. Créer les tables Supabase
 

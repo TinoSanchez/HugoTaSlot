@@ -8,6 +8,78 @@ function isCloudUser() {
   return !!(currentUser && !currentUser.isGuest && currentUser.cloud && currentUser.id);
 }
 
+/** Vérifie / rafraîchit le JWT Supabase (requis pour les RPC paris, bonus, etc.). */
+async function restoreCloudAuthSession() {
+  const c = getAuthClient();
+  if (!c) return null;
+  try {
+    let { data: { session } } = await c.auth.getSession();
+    if (session?.access_token) return session;
+    const { data: ref } = await c.auth.refreshSession().catch(() => ({ data: { session: null } }));
+    session = ref?.session || null;
+    if (session?.access_token) return session;
+    const meta = getSessionMeta();
+    if (meta?.supaRefresh) {
+      const { data: setData, error } = await c.auth.setSession({
+        access_token: meta.supaAccess || '',
+        refresh_token: meta.supaRefresh,
+      });
+      if (!error && setData?.session?.access_token) return setData.session;
+    }
+  } catch (_) {}
+  return null;
+}
+
+async function persistCloudAuthSession(session) {
+  if (!session?.access_token || !session?.refresh_token) return false;
+  const c = getAuthClient();
+  if (!c) return false;
+  try {
+    const { error } = await c.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    });
+    if (error) return false;
+    saveSessionMeta({
+      supaAccess: session.access_token,
+      supaRefresh: session.refresh_token,
+      supaExpires: session.expires_at || null,
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function forceCloudReauth(message) {
+  const c = getAuthClient();
+  if (c) await c.auth.signOut({ scope: 'local' }).catch(() => {});
+  clearSession();
+  saveSessionMeta({ supaAccess: null, supaRefresh: null, supaExpires: null });
+  currentUser = null;
+  authReady = false;
+  renderProfileBadge();
+  updateLobbyBalance();
+  updateAdminTabVisibility();
+  closeProfileMenu();
+  if (message) showToast(message, 'warn', 3400);
+  pendingAuthOpen = true;
+  if (typeof showAuth === 'function') showAuth();
+}
+
+async function ensureCloudSession({ refresh = true, promptLogin = false } = {}) {
+  if (!isCloudUser()) return null;
+  void refresh;
+  const session = await restoreCloudAuthSession();
+  if (!session?.access_token) {
+    if (promptLogin) await forceCloudReauth('Session expirée — reconnecte-toi.');
+    return null;
+  }
+  return session;
+}
+window.ensureCloudSession = ensureCloudSession;
+window.forceCloudReauth = forceCloudReauth;
+
 
 let discordLinkCache = { linked: false, username: '', pendingCode: '', checked: false };
 
@@ -294,7 +366,8 @@ const ONLINE_SUPABASE_URL = 'https://kkqskgxjyurtplbububc.supabase.co';
 const ONLINE_SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrcXNrZ3hqeXVydHBsYnVidWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTA0MjcsImV4cCI6MjA5Mjg4NjQyN30.7f8Rub_5lO-yfZSbIUvtaUVZew_1XABwIvvU2yXmG5c';
 const FORCED_ADMIN_IDS = new Set([
   '02b7e350-b802-4ddf-937f-a5172080c8fa',
-  'c86cbb06-7765-4216-ad83-7e8e8eb0c3a9'
+  'c86cbb06-7765-4216-ad83-7e8e8eb0c3a9',
+  'b0cfa138-c7e6-42e7-ab15-724d2e1f4844',
 ]);
 let onlineCount = 1;
 let onlineClient = null;
@@ -543,7 +616,16 @@ function applyUiPrefs() {
 }
 function getAuthClient() {
   if (!window.supabase || !window.supabase.createClient) return null;
-  if (!authClient) authClient = window.supabase.createClient(ONLINE_SUPABASE_URL, ONLINE_SUPABASE_ANON);
+  if (!authClient) {
+    authClient = window.supabase.createClient(ONLINE_SUPABASE_URL, ONLINE_SUPABASE_ANON, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storage: typeof localStorage !== 'undefined' ? localStorage : undefined,
+      },
+    });
+  }
   return authClient;
 }
 function usernameToEmail(u) {
@@ -556,7 +638,9 @@ function mapAuthError(err) {
   const msg = String(err?.message || err || '').toLowerCase();
   if (msg.includes('email rate limit exceeded')) return 'Limite email atteinte. Attends 1 minute puis réessaie.';
   if (msg.includes('for security purposes')) return 'Trop de tentatives. Attends un peu puis réessaie.';
-  if (msg.includes('email not confirmed')) return 'La confirmation email est active côté Supabase. Désactive-la dans Providers > Email.';
+  if (msg.includes('email not confirmed')) return 'Compte créé, mais la confirmation email est active sur Supabase. Désactive-la (Authentication → Providers → Email → « Confirm email » OFF) puis reconnecte-toi.';
+  if (msg.includes('provider is not enabled') || msg.includes('unsupported provider')) return 'Ce provider n’est pas activé sur Supabase (Authentication → Providers → active-le et renseigne Client ID + Secret).';
+  if (msg.includes('redirect') && msg.includes('not allowed')) return 'URL de redirection non autorisée. Ajoute le domaine dans Supabase (Authentication → URL Configuration → Redirect URLs).';
   if (msg.includes('invalid login credentials')) return 'Identifiant ou mot de passe incorrect.';
   if (msg.includes('user already registered')) return 'Compte déjà existant. Essaie de te connecter.';
   if (msg.includes('password')) return 'Mot de passe trop faible (minimum 6 caractères).';
@@ -564,6 +648,67 @@ function mapAuthError(err) {
   return err?.message || 'Erreur d’authentification.';
 }
 /** Après RPC (ex. admin_set_role), réinjecte le profil serveur dans la session si c’est le compte courant. */
+function isGenericCloudUsername(v) {
+  const s = String(v || '').trim().toLowerCase();
+  return !s || s === 'player';
+}
+function normalizeCloudUsername(raw) {
+  const s = String(raw || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  return s || '';
+}
+function resolveCloudUsername(p, sessionUser, loginHint = '') {
+  const profileUsername = String(p?.username || '').trim();
+  const profileDisplay = String(p?.display_name || '').trim();
+  const metaUsername = String(
+    sessionUser?.user_metadata?.username
+    || sessionUser?.user_metadata?.display_name
+    || sessionUser?.user_metadata?.preferred_username
+    || sessionUser?.user_metadata?.full_name
+    || sessionUser?.user_metadata?.name
+    || ''
+  ).trim();
+  const email = String(p?.email || sessionUser?.email || '').trim();
+  const emailLocal = email.includes('@') ? email.split('@')[0] : '';
+  const emailOk = emailLocal && !isGenericCloudUsername(emailLocal) && !email.endsWith('@player.local');
+  const hint = String(loginHint || currentUser?.authLogin || '').trim();
+  const hintNorm = normalizeCloudUsername(hint);
+
+  if (!isGenericCloudUsername(profileUsername)) return profileUsername;
+  if (!isGenericCloudUsername(metaUsername)) return normalizeCloudUsername(metaUsername) || metaUsername;
+  if (hintNorm && !isGenericCloudUsername(hintNorm)) return hintNorm;
+  if (!isGenericCloudUsername(profileDisplay)) return profileDisplay;
+  if (emailOk) return emailLocal;
+  return profileUsername || metaUsername || hintNorm || 'player';
+}
+function formatCloudDisplayName(raw) {
+  return String(raw || '').trim().slice(0, 32);
+}
+function profileIdentityIsGeneric(p) {
+  if (!p) return true;
+  return isGenericCloudUsername(p.username) && isGenericCloudUsername(p.display_name);
+}
+async function syncCloudProfileIdentity(userId, loginName, { onlyIfGeneric = true } = {}) {
+  const c = getAuthClient();
+  const normalized = normalizeCloudUsername(loginName);
+  if (!c || !userId || !normalized || isGenericCloudUsername(normalized)) return;
+  const display = formatCloudDisplayName(loginName) || normalized;
+  try {
+    if (onlyIfGeneric) {
+      const { data: p } = await cloudCall('profile', () => c.from('profiles')
+        .select('username, display_name')
+        .eq('id', userId)
+        .single(), { retries: 0, timeoutMs: 8000, quiet: true });
+      if (!profileIdentityIsGeneric(p)) return;
+    }
+    await cloudCall('profile', () => c.from('profiles').update({
+      username: normalized,
+      display_name: display,
+    }).eq('id', userId), { retries: 1, timeoutMs: 10000, delayMs: 400, quiet: true });
+    invalidateCache('profile', String(userId));
+  } catch (e) {
+    pushRuntimeLog('warn', `profile_identity_sync: ${String(e?.message || e || 'unknown')}`);
+  }
+}
 function mergeCloudProfileIntoCurrentUserIfSame(fresh) {
   if (!fresh || !currentUser?.cloud || String(currentUser.id) !== String(fresh.id)) return false;
   Object.assign(currentUser, fresh);
@@ -589,11 +734,16 @@ async function loadCloudProfile(userId, { force = false } = {}) {
   const su = sessionRes?.data?.session?.user && String(sessionRes.data.session.user.id || '') === String(userId)
     ? sessionRes.data.session.user
     : null;
-  const metaUsername = String(su?.user_metadata?.username || su?.user_metadata?.display_name || '').trim();
+  const metaUsername = String(
+    su?.user_metadata?.username
+    || su?.user_metadata?.display_name
+    || su?.user_metadata?.preferred_username
+    || su?.user_metadata?.full_name
+    || su?.user_metadata?.name
+    || ''
+  ).trim();
   const profileUsername = String(p?.username || '').trim();
-  const usernameResolved = (profileUsername && profileUsername.toLowerCase() !== 'player')
-    ? profileUsername
-    : (metaUsername || (p?.email ? String(p.email).split('@')[0] : 'player'));
+  const usernameResolved = resolveCloudUsername(p, su, currentUser?.authLogin || '');
   const profileDisplay = String(p?.display_name || '').trim();
   const displayResolved = profileDisplay || usernameResolved || 'Player';
   const roleResolved = String(p?.role || 'player').trim().toLowerCase();
@@ -702,7 +852,9 @@ function resolveBonusImageUrl(bonus) {
 }
 function getDisplayName() {
   if (!currentUser) return 'Invité';
-  return currentUser.displayName || currentUser.username || 'Invité';
+  const disp = String(currentUser.displayName || '').trim();
+  if (disp) return disp;
+  return currentUser.username || 'Invité';
 }
 function getAvatarUrl() {
   if (!currentUser) return '';
@@ -731,8 +883,9 @@ function stopOnlinePresence() {
 }
 function startOnlinePresence() {
   try {
-    if (!window.supabase || !window.supabase.createClient) return;
-    if (!onlineClient) onlineClient = window.supabase.createClient(ONLINE_SUPABASE_URL, ONLINE_SUPABASE_ANON);
+    const client = getAuthClient();
+    if (!client) return;
+    onlineClient = client;
     stopOnlinePresence();
     const presenceKey = getOnlinePresenceKey();
     onlineChannel = onlineClient.channel('hugotaslot-online', { config: { presence: { key: presenceKey } } });
@@ -771,33 +924,32 @@ function buildAvatarMarkup(sizeClass = 'profile-avatar') {
 }
 function updateCurrentProfile({ displayName, avatar }) {
   if (!currentUser) return;
-  const lockedPseudo = String(currentUser.username || 'Invité').trim() || 'Invité';
-  const nextName = lockedPseudo;
   const nextAvatar = String(avatar || '').trim();
+  const nextDisplay = String(displayName || getDisplayName() || currentUser.username || 'Invité').trim().slice(0, 32);
   if (currentUser.isGuest) {
-    currentUser.displayName = nextName;
+    currentUser.displayName = nextDisplay;
     currentUser.avatar = nextAvatar;
-    saveGuestProfile({ displayName: nextName, avatar: nextAvatar, balance: getSafeGuestBalance(currentUser.balance) });
+    saveGuestProfile({ displayName: nextDisplay, avatar: nextAvatar, balance: getSafeGuestBalance(currentUser.balance) });
     renderProfileBadge();
     return;
   }
   const users = getUsers();
   const rec = users[currentUser.username];
   if (rec) {
-    rec.displayName = nextName;
+    rec.displayName = nextDisplay;
     rec.avatar = nextAvatar;
     saveUsers(users);
   }
-  currentUser.displayName = nextName;
+  currentUser.displayName = nextDisplay;
   currentUser.avatar = nextAvatar;
   saveSession(currentUser);
   if (currentUser.cloud) {
     const c = getAuthClient();
     if (c && currentUser.id) {
       c.from('profiles')
-        .update({ display_name: nextName, avatar_url: nextAvatar })
+        .update({ display_name: nextDisplay, avatar_url: nextAvatar })
         .eq('id', currentUser.id)
-        .then(() => {})
+        .then(() => { invalidateCache('profile', String(currentUser.id)); })
         .catch(() => showToast('Profil cloud non synchronisé', 'error', 1800));
     }
   }
@@ -820,8 +972,7 @@ function describeCloudError(err) {
 async function supabaseRpc(name, params = {}) {
   const supa = getAuthClient();
   if (!supa) throw new Error('cloud_client_unavailable');
-  const { data: { session }, error: sessErr } = await supa.auth.getSession();
-  if (sessErr) throw sessErr;
+  const session = await restoreCloudAuthSession();
   if (!session?.access_token) throw new Error('auth required');
   const res = await fetch(`${ONLINE_SUPABASE_URL}/rest/v1/rpc/${encodeURIComponent(name)}`, {
     method: 'POST',
@@ -911,8 +1062,12 @@ function closeProfileMenu() {
 }
 function applyProfileSettings() {
   const avatarEl = document.getElementById('profile-avatar-url');
+  const nameEl = document.getElementById('profile-display-name');
   if (!avatarEl) return;
-  updateCurrentProfile({ displayName: currentUser?.username || 'Invité', avatar: avatarEl.value });
+  const nextDisplay = nameEl && !nameEl.disabled
+    ? String(nameEl.value || '').trim()
+    : getDisplayName();
+  updateCurrentProfile({ displayName: nextDisplay || getDisplayName(), avatar: avatarEl.value });
   showToast('Profil mis à jour', 'success', 1800);
 }
 function saveProfilePreferences() {
@@ -1121,19 +1276,13 @@ async function claimDailyDrop() {
 
   let supaCloud = null;
   if (isCloudUser()) {
+    const session = await ensureCloudSession({ refresh: true, promptLogin: true });
+    if (!session) return;
     supaCloud = getAuthClient();
     if (!supaCloud) {
       showToast('Connexion Supabase indisponible', 'error', 2200);
       return;
     }
-    try {
-      const { data: sessData } = await supaCloud.auth.getSession();
-      if (!sessData?.session) {
-        showToast('Session expirée. Reconnecte-toi pour récupérer le drop.', 'error', 2600);
-        return;
-      }
-      await supaCloud.auth.refreshSession().catch(() => {});
-    } catch (_) {}
   }
 
   claimDailyDropInFlight = true;
@@ -1246,9 +1395,9 @@ async function initAuth() {
   const c = getAuthClient();
   if (c) {
     try {
-      const { data } = await c.auth.getSession();
-      const uid = data?.session?.user?.id;
-      if (uid) {
+      const session = await restoreCloudAuthSession();
+      const uid = session?.user?.id;
+      if (uid && session?.access_token) {
         const persistedBal = getPersistedBalanceForUser(uid);
         if (diskSession && String(diskSession.id) === String(uid)) {
           currentUser = {
@@ -1274,6 +1423,7 @@ async function initAuth() {
         const profile = await loadCloudProfile(uid, { force: true });
         if (profile) {
           currentUser = { ...(currentUser || {}), ...profile };
+          if (diskSession?.authLogin) currentUser.authLogin = diskSession.authLogin;
           saveSession(currentUser);
           saveSessionMeta({ startedAt: Date.now(), mode: 'cloud' });
           authReady = true;
@@ -1283,13 +1433,10 @@ async function initAuth() {
     } catch (_) {}
   }
   if (!currentUser && diskSession?.cloud) {
-    const persistedBal = getPersistedBalanceForUser(diskSession.id);
-    currentUser = {
-      ...diskSession,
-      balance: persistedBal !== null ? persistedBal : Number(diskSession.balance || 0)
-    };
-    saveSession(currentUser);
-    authReady = true;
+    pushRuntimeLog('warn', 'cloud_disk_session_stale: supabase jwt missing');
+    clearSession();
+    saveSessionMeta({ supaAccess: null, supaRefresh: null, supaExpires: null });
+    pendingAuthOpen = true;
   }
   if (!currentUser) {
     const session = diskSession || getSession();
@@ -1485,11 +1632,16 @@ async function authSubmit() {
         }
       }), { retries: 1, timeoutMs: 12000, delayMs: 600 });
       if (error) throw error;
-      await cloudCall('auth', () => c.auth.signInWithPassword({ email: registerEmail, password }), { retries: 1, timeoutMs: 12000, delayMs: 600 });
-      const { data } = await cloudCall('auth', () => c.auth.getSession(), { retries: 0, timeoutMs: 10000, quiet: true });
-      const uid = data?.session?.user?.id;
+      const signInRes = await cloudCall('auth', () => c.auth.signInWithPassword({ email: registerEmail, password }), { retries: 1, timeoutMs: 12000, delayMs: 600 });
+      if (signInRes?.error) throw signInRes.error;
+      const regSession = signInRes?.data?.session;
+      if (!regSession?.access_token) throw new Error('email not confirmed');
+      await persistCloudAuthSession(regSession);
+      const uid = regSession.user?.id;
       if (!uid) throw new Error('Session cloud introuvable');
-      currentUser = await loadCloudProfile(uid);
+      await syncCloudProfileIdentity(uid, username);
+      currentUser = await loadCloudProfile(uid, { force: true });
+      if (currentUser) currentUser.authLogin = username.trim();
       saveSession(currentUser);
       saveSessionMeta({ startedAt: Date.now(), mode: 'cloud' });
       authReady = true;
@@ -1503,12 +1655,17 @@ async function authSubmit() {
     }
 
     const loginEmail = email || usernameToEmail(username);
-    const { error } = await cloudCall('auth', () => c.auth.signInWithPassword({ email: loginEmail, password }), { retries: 1, timeoutMs: 12000, delayMs: 600 });
-    if (error) throw error;
-    const { data } = await cloudCall('auth', () => c.auth.getSession(), { retries: 0, timeoutMs: 10000, quiet: true });
-    const uid = data?.session?.user?.id;
+    const signInRes = await cloudCall('auth', () => c.auth.signInWithPassword({ email: loginEmail, password }), { retries: 1, timeoutMs: 12000, delayMs: 600 });
+    if (signInRes?.error) throw signInRes.error;
+    const loginSession = signInRes?.data?.session;
+    if (!loginSession?.access_token) throw new Error('email not confirmed');
+    const persisted = await persistCloudAuthSession(loginSession);
+    if (!persisted) throw new Error('Session cloud introuvable');
+    const uid = loginSession.user?.id;
     if (!uid) throw new Error('Session cloud introuvable');
-    currentUser = await loadCloudProfile(uid);
+    await syncCloudProfileIdentity(uid, username);
+    currentUser = await loadCloudProfile(uid, { force: true });
+    if (currentUser) currentUser.authLogin = username.trim();
     saveSession(currentUser);
     saveSessionMeta({ startedAt: Date.now(), mode: 'cloud' });
     authReady = true;
@@ -1521,13 +1678,54 @@ async function authSubmit() {
     showToast(`Bonjour ${currentUser.displayName || currentUser.username} !`, 'success', 2600);
   } catch (e) {
     if (authMode === 'login') authGuardRecord(guardId, false);
+    try { pushRuntimeLog('warn', `auth_${authMode}_fail: ${e?.message || e}`); } catch (_) {}
+    try { console.warn('[auth]', authMode, e); } catch (_) {}
     errEl.textContent = mapAuthError(e);
     errEl.classList.add('show');
   }
 }
 
+/** Connexion OAuth (Google / Discord / Facebook / etc.).
+ * Redirige vers le provider ; au retour, initAuth() restaure la session Supabase. */
+async function authOAuth(provider) {
+  const errEl = document.getElementById('auth-error');
+  if (errEl) errEl.classList.remove('show');
+  const c = getAuthClient();
+  if (!c) {
+    if (errEl) { errEl.textContent = 'Client Supabase indisponible.'; errEl.classList.add('show'); }
+    return;
+  }
+  const supported = new Set(['google', 'discord', 'facebook', 'twitch', 'github', 'apple']);
+  if (!supported.has(String(provider))) {
+    if (errEl) { errEl.textContent = `Provider ${provider} non supporté.`; errEl.classList.add('show'); }
+    return;
+  }
+  const apiGuard = actionGuardAcquire(`auth:oauth:${provider}`, { limit: 4, windowMs: 30000, blockMs: 60000 });
+  if (apiGuard.blocked) {
+    if (errEl) { errEl.textContent = `Trop de tentatives OAuth. Réessaie dans ${apiGuard.waitSec}s.`; errEl.classList.add('show'); }
+    return;
+  }
+  try {
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const { error } = await c.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo,
+        queryParams: provider === 'google' ? { access_type: 'offline', prompt: 'consent' } : undefined,
+      },
+    });
+    if (error) throw error;
+  } catch (e) {
+    try { pushRuntimeLog('warn', `auth_oauth_fail:${provider} ${e?.message || e}`); } catch (_) {}
+    try { console.warn('[auth] oauth', provider, e); } catch (_) {}
+    if (errEl) { errEl.textContent = mapAuthError(e); errEl.classList.add('show'); }
+  }
+}
+if (typeof window !== 'undefined') window.authOAuth = authOAuth;
+
 function enterGuestMode(message = 'Déconnecté (mode invité actif)') {
   clearSession();
+  saveSessionMeta({ supaAccess: null, supaRefresh: null, supaExpires: null });
   try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(LOCAL_SYNCED_KEY); } catch (_) {}
   state.hunts = [];
   state.activeHuntId = null;
@@ -1586,7 +1784,7 @@ function renderProfileBadge(opts = {}) {
     area.appendChild(badge);
   }
   if (currentUser) {
-    const pseudoRaw = currentUser.username || getDisplayName() || 'Invité';
+    const pseudoRaw = getDisplayName();
     const safePseudo = escapeHtml(pseudoRaw);
     const safeName = escapeHtml(getDisplayName());
     const safeUser = escapeHtml(currentUser.username || 'Invité');
@@ -1697,8 +1895,11 @@ function renderProfileBadge(opts = {}) {
               : `<div class="bj-rec">Connecte-toi avec un compte cloud pour activer la liaison Discord.</div>`}
           </div>
           <div class="profile-menu-row">
-            <label class="profile-menu-label">Pseudo du compte (verrouillé)</label>
-            <input class="profile-menu-input" id="profile-display-name" value="${safePseudo}" maxlength="20" disabled title="Le pseudo est verrouillé sur le compte">
+            <label class="profile-menu-label">Pseudo affiché${adminNow ? '' : ' (verrouillé)'}</label>
+            <input class="profile-menu-input" id="profile-display-name" value="${safeName}" maxlength="32" ${adminNow ? '' : 'disabled'} title="${adminNow ? 'Nom visible sur le site' : 'Le pseudo affiché est géré par le compte'}">
+          </div>
+          <div class="profile-menu-row" style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);">
+            Identifiant connexion: ${safeUser}
           </div>
           <div class="profile-menu-row">
             <label class="profile-menu-label">Photo (URL)</label>
@@ -4682,6 +4883,7 @@ const PAGE_TO_SLUG = Object.freeze({
   admin: 'admin',
   roue_multi: 'roue-multi-tirages',
   roue_tournoi_equipes: 'roue-tournoi-equipes',
+  paris_sportifs: 'paris-sportifs',
 });
 const SLUG_TO_PAGE = (() => {
   const m = Object.create(null);
@@ -4705,6 +4907,7 @@ const PAGE_TITLES = Object.freeze({
   admin: 'Admin',
   roue_multi: 'Roue Multi-Tirages',
   roue_tournoi_equipes: 'Roue Tournoi Équipes',
+  paris_sportifs: 'Paris Sportifs',
 });
 const SITE_NAME = 'HugoTaSlot X 19EnPlein';
 function pageToPath(page) {
@@ -4959,6 +5162,7 @@ function switchPage(page, opts) {
           flushFeedbackQueue().catch(() => {});
         };
         case 'news': return () => { if (typeof renderNewsPage === 'function') renderNewsPage(); };
+        case 'paris_sportifs': return () => { if (typeof renderParisSportifsPage === 'function') renderParisSportifsPage(); };
         default: return null;
       }
     })(page);
@@ -5429,6 +5633,120 @@ const __PAGE_HTML = {
     <iframe class="roue-embed-frame" src="./roue-tournoi-equipes.html" title="19enplein - Roue Tournoi Casino"></iframe>
   </div>
 </div>
+  `,
+  paris_sportifs: `
+<div class="page-panel ps-wmx" id="page-paris-sportifs">
+  <header class="ps-wmx-header">
+    <div class="ps-wmx-header-brand">
+      <span class="ps-wmx-logo">Paris Sportifs</span>
+      <span class="ps-wmx-tagline">HugoCoins · virtuel</span>
+    </div>
+    <nav class="ps-wmx-header-nav" role="tablist">
+      <button type="button" class="ps-main-tab active" data-tab="matches" role="tab">Matchs</button>
+      <button type="button" class="ps-main-tab ps-main-tab--live" data-tab="live" role="tab">En direct <span class="ps-live-tab-count"></span></button>
+      <button type="button" class="ps-main-tab" data-tab="mine" role="tab">Mes paris</button>
+      <button type="button" class="ps-main-tab" data-tab="leaderboard" role="tab">Classement</button>
+    </nav>
+    <div class="ps-wmx-header-right">
+      <button type="button" class="ps-wmx-bonus-btn" id="ps-bonus-btn" title="Bonus quotidien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/></svg>
+        Bonus
+      </button>
+      <div class="ps-wmx-balance" id="ps-wallet-badge">
+        <span class="ps-wmx-balance-label">Solde</span>
+        <span class="ps-wmx-balance-val" id="ps-wallet-amount">—</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="ps-wmx-legal">
+    <strong>100 % virtuel</strong> · Aucune mise d'argent réel · Les HugoCoins n'ont aucune valeur monétaire.
+  </div>
+
+  <div class="ps-wmx-shell" id="ps-wmx-shell-matches">
+    <aside class="ps-wmx-sidebar" id="ps-sidebar-competitions" aria-label="Compétitions"></aside>
+    <main class="ps-wmx-main">
+      <div class="ps-wmx-toolbar">
+        <input type="search" id="ps-search" class="ps-wmx-search" placeholder="Rechercher une équipe, un joueur…" autocomplete="off">
+      </div>
+      <div class="ps-wmx-sport-strip-wrap">
+        <nav class="ps-wmx-sport-strip" id="ps-sport-nav" aria-label="Sports"></nav>
+      </div>
+      <div class="ps-wmx-matches" id="ps-leagues-container">
+        <div class="ps-empty">Chargement des matchs…</div>
+      </div>
+    </main>
+    <aside class="ps-wmx-betslip" id="ps-betslip" aria-label="Panier de paris">
+      <div class="ps-slip-head">
+        <span class="ps-slip-count" id="ps-slip-count">0 sélection</span>
+        <button type="button" class="ps-slip-clear" id="ps-slip-clear" title="Vider le panier" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div>
+      <div class="ps-slip-tabs">
+        <button type="button" class="ps-slip-tab active" data-slip-mode="simple">Simple</button>
+        <button type="button" class="ps-slip-tab" data-slip-mode="combo">Combiné</button>
+      </div>
+      <div class="ps-slip-body" id="ps-slip-body">
+        <div class="ps-slip-empty" id="ps-slip-empty">
+          <div class="ps-slip-empty-icon">🎒</div>
+          <p>Ton panier est vide !</p>
+          <span>Ajoute tes paris en cliquant sur les cotes.</span>
+        </div>
+        <div class="ps-slip-list" id="ps-slip-list" hidden></div>
+      </div>
+      <div class="ps-slip-footer" id="ps-slip-footer" hidden>
+        <label class="ps-slip-stake-label">Mise (HC)
+          <input type="number" id="ps-slip-stake" class="ps-slip-stake-input" min="10" max="500000" step="10" value="100">
+        </label>
+        <div class="ps-slip-quick">
+          <button type="button" class="ps-slip-quick-btn" data-stake="50">50</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="100">100</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="500">500</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="1000">1K</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="max">Max</button>
+        </div>
+        <div class="ps-slip-gains">
+          <span>Cote totale</span>
+          <strong id="ps-slip-total-odd">—</strong>
+        </div>
+        <div class="ps-slip-gains">
+          <span>Gains potentiels</span>
+          <strong id="ps-slip-payout">0 HC</strong>
+        </div>
+        <button type="button" class="ps-slip-submit" id="ps-slip-submit" disabled>Parier</button>
+        <div class="ps-slip-error" id="ps-slip-error" hidden></div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="ps-wmx-full" id="ps-section-mine" hidden>
+    <div class="ps-mine-filters">
+      <button type="button" class="ps-mine-filter active" data-filter="all">Tous</button>
+      <button type="button" class="ps-mine-filter" data-filter="pending">En cours</button>
+      <button type="button" class="ps-mine-filter" data-filter="won">Gagnés</button>
+      <button type="button" class="ps-mine-filter" data-filter="lost">Perdus</button>
+    </div>
+    <div class="ps-mine-summary" id="ps-mine-summary"></div>
+    <div class="ps-mine-list" id="ps-mine-list"><div class="ps-empty">Chargement…</div></div>
+  </section>
+
+  <section class="ps-wmx-full" id="ps-section-leaderboard" hidden>
+    <div class="ps-leaderboard-header">
+      <h3>Top parieurs du mois</h3>
+      <p class="ps-leaderboard-sub">Profit net · reset le 1er du mois</p>
+    </div>
+    <div class="ps-leaderboard" id="ps-leaderboard-list"><div class="ps-empty">Chargement…</div></div>
+  </section>
+
+  <div class="ps-match-detail" id="ps-match-detail" hidden>
+    <div class="ps-match-detail-backdrop" id="ps-match-detail-backdrop"></div>
+    <div class="ps-match-detail-panel">
+      <button type="button" class="ps-match-detail-close" id="ps-match-detail-close" aria-label="Fermer">×</button>
+      <div id="ps-match-detail-body"></div>
+    </div>
+  </div>
+</div>
   `
 };
 
@@ -5448,6 +5766,7 @@ const LAZY_PAGE_SCRIPTS = Object.freeze({
   updates:     './scripts/pages/updates.js',
   review:      './scripts/pages/review.js',
   hunt:        './scripts/pages/hunt-share.js',
+  paris_sportifs: './scripts/pages/paris-sportifs.js?v=20260710c',
 });
 /** Scripts à charger avant la page (helpers partagés hub-features / tournoi). */
 const LAZY_PAGE_DEPS = Object.freeze({

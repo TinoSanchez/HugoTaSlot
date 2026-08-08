@@ -274,6 +274,8 @@ function huntWorkspaceFingerprint() {
   return `${h.id}:${(h.bonuses || []).length}:${opened}:${state.bonusView.q}:${state.bonusView.status}`;
 }
 
+let __huntUiPending = null;
+let __huntUiTimer = null;
 function scheduleHuntUI(opts = {}) {
   __huntUiPending = { ...(__huntUiPending || {}), ...opts };
   clearTimeout(__huntUiTimer);

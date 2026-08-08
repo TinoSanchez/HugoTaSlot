@@ -1,7 +1,9 @@
-import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { EmbedBuilder, MessageFlags } from 'discord.js';
 import { config } from '../config.js';
 import { supabase } from '../supabase.js';
 import { child } from '../lib/logger.js';
+import { buildCommandDefs } from './commands-refresh.js';
+export { buildCommandDefs, refreshGuildCommands } from './commands-refresh.js';
 import {
   pickRandomCatalogSlot,
   resolveCatalogSlotFromQuery,
@@ -11,65 +13,57 @@ import {
   slotChoiceValue,
   slotGamdomOrSiteUrl,
 } from '../lib/catalog.js';
+import {
+  cmdPronoStart,
+  cmdPronoSubmit,
+  cmdPronoLock,
+  cmdPronoUnlock,
+  cmdPronoClose,
+  cmdPronoStatus,
+  handlePronoModalSubmit,
+  isPronoModalId,
+} from './prono.js';
+import {
+  cmdCallsSubmit,
+  cmdCallsLock,
+  cmdCallsUnlock,
+  cmdCallsClose,
+  cmdCallsStatus,
+} from './machine-calls.js';
 
 const log = child({ mod: 'cmd' });
 const COLOR = 0x7F5A83;
 
-/* ─── Définitions des commandes (pour register-commands.js) ───────────── */
-export const commandDefs = [
-  new SlashCommandBuilder()
-    .setName('lastvideo')
-    .setDescription('Affiche la dernière vidéo HugoTaSlot détectée par le bot.'),
-  new SlashCommandBuilder()
-    .setName('lastslot')
-    .setDescription('Affiche la dernière sortie de slot annoncée.'),
-  new SlashCommandBuilder()
-    .setName('link')
-    .setDescription('Lie ton compte Discord à ton compte HugoTaSlot.')
-    .addStringOption((o) => o.setName('code').setDescription('Code à 6 caractères généré sur le site').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('unlink')
-    .setDescription('Délie ton compte Discord de HugoTaSlot.'),
-  new SlashCommandBuilder()
-    .setName('hunts')
-    .setDescription('Liste les derniers Bonus Hunts d’un membre lié.')
-    .addUserOption((o) => o.setName('membre').setDescription('Membre cible (par défaut : toi)').setRequired(false)),
-  new SlashCommandBuilder()
-    .setName('leaderboard')
-    .setDescription('Top des derniers hunts terminés (par profit).'),
-  new SlashCommandBuilder()
-    .setName('live')
-    .setDescription('Ouvre un hunt public partagé (lien live HugoTaSlot /h/…).')
-    .addStringOption((o) => o
-      .setName('slug')
-      .setDescription('Slug du lien public (ex. abc123def4 depuis /h/…)')
-      .setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('slot')
-    .setDescription('Tire une slot au hasard depuis le catalogue du site (jeux.json).'),
-  new SlashCommandBuilder()
-    .setName('call')
-    .setDescription('Call machine : choisis une slot du catalogue ou tire au hasard.')
-    .addStringOption((o) => o
-      .setName('machine')
-      .setDescription('Tape le nom (ex. Hounds of Hell) puis choisis dans la liste')
-      .setRequired(false)
-      .setAutocomplete(true)),
-  new SlashCommandBuilder()
-    .setName('activity')
-    .setDescription('Lance l’Activity HugoTaSlot (Rich Presence avec logos 19ENPLEIN / Gamdom).'),
-].map((c) => c.toJSON());
+/** Version statique (utilisée par register-commands.js au boot / CLI). */
+export const commandDefs = buildCommandDefs();
 
 /* ─── Dispatcher ──────────────────────────────────────────────────────── */
 export async function registerInteractionHandlers(client) {
   client.on('interactionCreate', async (interaction) => {
     if (interaction.isAutocomplete()) {
-      if (interaction.commandName === 'call' && interaction.options.getFocused(true).name === 'machine') {
+      const focused = interaction.options.getFocused(true);
+      if (
+        (interaction.commandName === 'machine' && focused.name === 'nom')
+        || (interaction.commandName === 'calls' && focused.name === 'machine')
+      ) {
         try {
           return await autocompleteCallMachine(interaction);
         } catch (e) {
           log.error({ err: e }, 'autocomplete call failed');
           return interaction.respond([]).catch(() => {});
+        }
+      }
+      return;
+    }
+    if (interaction.isModalSubmit()) {
+      if (isPronoModalId(interaction.customId)) {
+        try { return await handlePronoModalSubmit(interaction); }
+        catch (e) {
+          log.error({ err: e }, 'prono modal submit failed');
+          const msg = { content: 'Erreur lors de l’enregistrement de ton prono.', flags: MessageFlags.Ephemeral };
+          if (interaction.deferred || interaction.replied) await interaction.followUp(msg).catch(() => {});
+          else await interaction.reply(msg).catch(() => {});
+          return;
         }
       }
       return;
@@ -85,8 +79,19 @@ export async function registerInteractionHandlers(client) {
         case 'leaderboard': return cmdLeaderboard(interaction);
         case 'live': return cmdLive(interaction);
         case 'slot': return cmdRandomSlot(interaction);
-        case 'call': return cmdCall(interaction);
+        case 'machine': return cmdMachine(interaction);
         case 'activity': return cmdActivity(interaction);
+        case 'prono-start': return cmdPronoStart(interaction);
+        case 'prono': return cmdPronoSubmit(interaction);
+        case 'prono-lock': return cmdPronoLock(interaction);
+        case 'prono-unlock': return cmdPronoUnlock(interaction);
+        case 'prono-close': return cmdPronoClose(interaction);
+        case 'prono-status': return cmdPronoStatus(interaction);
+        case 'calls': return cmdCallsSubmit(interaction);
+        case 'calls-lock': return cmdCallsLock(interaction);
+        case 'calls-unlock': return cmdCallsUnlock(interaction);
+        case 'calls-close': return cmdCallsClose(interaction);
+        case 'calls-status': return cmdCallsStatus(interaction);
         default: return interaction.reply({ content: 'Commande inconnue.', flags: MessageFlags.Ephemeral });
       }
     } catch (e) {
@@ -260,7 +265,7 @@ async function cmdHunts(interaction) {
   return interaction.editReply({ embeds: [embed] });
 }
 
-/* ─── Autocomplete /call machine ─────────────────────────────────────── */
+/* ─── Autocomplete /machine nom · /calls machine ─────────────────────── */
 async function autocompleteCallMachine(interaction) {
   const focused = interaction.options.getFocused(true);
   const q = String(focused.value || '').trim();
@@ -313,10 +318,10 @@ async function cmdRandomSlot(interaction) {
   return interaction.editReply({ embeds: [buildCatalogSlotEmbed(slot, 'slot')] });
 }
 
-/* ─── /call [machine] — liste autocomplete ou hasard ─────────────────── */
-async function cmdCall(interaction) {
+/* ─── /machine [nom] — liste autocomplete ou hasard ──────────────────── */
+async function cmdMachine(interaction) {
   await interaction.deferReply();
-  const machineRaw = interaction.options.getString('machine');
+  const machineRaw = interaction.options.getString('nom');
   const query = machineRaw ? String(machineRaw).trim() : '';
 
   let slot = null;

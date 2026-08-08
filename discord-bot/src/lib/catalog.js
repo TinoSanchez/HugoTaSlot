@@ -5,14 +5,15 @@ import { child } from './logger.js';
 const log = child({ mod: 'catalog' });
 
 const CATALOG_URL = `${(config.site.url || 'https://hugotaslot.fr').replace(/\/+$/, '')}/jeux.json`;
-const REFRESH_MS = 6 * 60 * 60 * 1000;
+/** Cache court : les syncs jeux.json (Vercel) doivent arriver vite sur /machine et /calls. */
+const REFRESH_MS = 15 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 25_000;
 const UA = 'Mozilla/5.0 (compatible; HugoTaSlotBot/1.0; +https://hugotaslot.fr)';
 
 let _cache = {
   ts: 0,
   knownNames: new Set(),
-  /** entrées brutes de jeux.json (pour /slot, /call, etc.) */
+  /** entrées brutes de jeux.json (pour /slot, /machine, etc.) */
   slots: [],
   rawCount: 0,
   loadedAt: null,
@@ -32,9 +33,16 @@ async function fetchCatalog() {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
   try {
-    const { statusCode, body } = await request(CATALOG_URL, {
+    // bust CDN / caches intermédiaires (sinon le bot peut rester sur un vieux jeux.json)
+    const url = `${CATALOG_URL}${CATALOG_URL.includes('?') ? '&' : '?'}v=${Date.now()}`;
+    const { statusCode, body } = await request(url, {
       method: 'GET',
-      headers: { 'user-agent': UA, accept: 'application/json,*/*' },
+      headers: {
+        'user-agent': UA,
+        accept: 'application/json,*/*',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
       signal: ac.signal,
     });
     if (statusCode < 200 || statusCode >= 300) {
@@ -159,16 +167,46 @@ function searchTokens(query) {
     .slice(0, 8);
 }
 
-function scoreSlotMatch(normTitle, qFull, tokens) {
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** true si `needle` apparaît comme mot entier dans `hay` (pas un morceau de leprechaun). */
+function hasWholeWord(hay, needle) {
+  if (!hay || !needle) return false;
+  return new RegExp(`(?:^|[^a-z0-9])${escapeRegex(needle)}(?:$|[^a-z0-9])`).test(hay);
+}
+
+function scoreSlotMatch(normTitle, normProvider, qFull, tokens) {
   if (!normTitle || !qFull) return 0;
+  const hay = normProvider ? `${normTitle} ${normProvider}` : normTitle;
+
   if (normTitle === qFull) return 1_000_000;
-  if (normTitle.includes(qFull)) return 500_000 + qFull.length * 100;
+  if (normTitle.startsWith(`${qFull} `) || normTitle.startsWith(qFull)) return 850_000 + qFull.length;
+
+  // Mot entier dans le titre (ex. « prechaun » → « Le Prechaun », pas « Leprechaun Song »)
+  if (hasWholeWord(normTitle, qFull)) return 750_000 + qFull.length * 100;
+
+  if (normTitle.includes(qFull)) {
+    // Sous-chaîne au milieu d’un mot plus long → score faible
+    return 8_000 + qFull.length * 10;
+  }
+
+  // Tokens : tous doivent matcher titre OU provider
   let score = 0;
   for (const t of tokens) {
-    if (normTitle.includes(t)) score += 10_000 + t.length * 50;
-    else return 0;
+    const inTitle = hasWholeWord(normTitle, t) ? 25_000 : (normTitle.includes(t) ? 8_000 : 0);
+    const inProv = normProvider
+      ? (hasWholeWord(normProvider, t) ? 12_000 : (normProvider.includes(t) ? 4_000 : 0))
+      : 0;
+    const part = Math.max(inTitle, inProv);
+    if (!part) return 0;
+    score += part + t.length * 50;
   }
-  return score + tokens.length;
+  if (score > 0) return score + tokens.length;
+  // Fallback : phrase entière dans provider+title
+  if (hay.includes(qFull)) return 3_000 + qFull.length;
+  return 0;
 }
 
 /**
@@ -186,7 +224,16 @@ export async function searchCatalogSlots(query, { limit = 25 } = {}) {
     const title = slotCatalogTitle(s);
     if (!title) continue;
     const normTitle = normalizeSearchText(title).replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-    const sc = scoreSlotMatch(normTitle, qFull, tokens.length ? tokens : qFull.split(/\s+/).filter(Boolean));
+    const normProvider = normalizeSearchText(s.provider || s.Provider || '')
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const sc = scoreSlotMatch(
+      normTitle,
+      normProvider,
+      qFull,
+      tokens.length ? tokens : qFull.split(/\s+/).filter(Boolean),
+    );
     if (sc > 0) ranked.push({ s, sc, title });
   }
   ranked.sort((a, b) => b.sc - a.sc || a.title.localeCompare(b.title, 'fr'));

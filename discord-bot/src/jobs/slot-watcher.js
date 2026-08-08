@@ -7,20 +7,8 @@ import { getChannelSafe } from '../discord/client.js';
 
 const log = child({ mod: 'slots' });
 const LOOKBACK_HOURS = 96; // pas d'annonces sur les sorties trop vieilles au premier run
-
-function buildSlotHuntPrefillUrl(slot) {
-  const title = String(slot?.name || slot?.title || '').trim();
-  if (!title) return `${config.site.url}/hunt`;
-  const params = new URLSearchParams();
-  params.set('slotTitle', title);
-  const provider = String(slot?.provider || '').trim();
-  const image = String(slot?.image || '').trim();
-  const url = String(slot?.url || '').trim();
-  if (provider) params.set('slotProvider', provider);
-  if (image) params.set('slotImage', image);
-  if (url) params.set('slotUrl', url);
-  return `${config.site.url}/hunt?${params.toString()}`;
-}
+const COLOR = 0xC9A227;
+const DESC_MAX = 3900; // marge sous la limite Discord 4096
 
 const REVIEW_HINTS = [/review/i, /slot review/i];
 const RELEASE_HINTS = [/launch/i, /release/i, /coming soon/i, /preview/i, /just released/i];
@@ -42,20 +30,15 @@ function looksLikeSlotRelease(item) {
 /**
  * Extrait provider / nom du slot depuis un titre BigWinBoard.
  * Heuristique : "Drop'em Review – Hacksaw Gaming" → name="Drop'em" provider="Hacksaw Gaming"
- *   ou "Hacksaw Gaming – Drop'em Review"
- *   ou "Drop'em Slot Review"
  */
 function extractProviderAndName(title) {
   const raw = String(title || '').trim();
   if (!raw) return { name: '', provider: '' };
-  // sépare sur tiret long ou court
   const parts = raw.split(/\s[-–—|:]\s/).map((p) => p.trim()).filter(Boolean);
-  // retire "Review" / "Slot Review" / "Online Slot"
   const clean = (s) => s.replace(/\b(slot review|slot|review|online)\b/gi, '').replace(/\s+/g, ' ').trim();
   if (parts.length >= 2) {
     const a = clean(parts[0]);
     const b = clean(parts[1]);
-    // Le provider est souvent Hacksaw Gaming, Push Gaming, Pragmatic Play (mots avec Gaming/Play/Studio).
     const isProv = (s) => /(gaming|play|studio|interactive|games|nolimit|hacksaw|relax|push|nolimit|elk|massive|peter|true lab|netent|red tiger|stake)/i.test(s);
     if (isProv(b)) return { name: a, provider: b };
     if (isProv(a)) return { name: b, provider: a };
@@ -82,7 +65,7 @@ export async function runSlotsCheck() {
     return { error: e.message };
   }
   const items = (feed.items || []).filter(looksLikeSlotRelease).slice(0, 15);
-  let posted = 0;
+  let inserted = 0;
   for (const item of items.reverse()) {
     try {
       const { name, provider } = extractProviderAndName(item.title);
@@ -100,7 +83,7 @@ export async function runSlotsCheck() {
       const publishedAt = item.publishedAt ? new Date(item.publishedAt) : new Date();
       const tooOld = !row && (Date.now() - publishedAt.getTime()) / 36e5 > LOOKBACK_HOURS;
 
-      if (!row) {
+      if (!row && !tooOld) {
         await supabase.from('slot_releases').insert({
           source: 'bigwinboard',
           external_id: item.id,
@@ -112,49 +95,102 @@ export async function runSlotsCheck() {
           url: item.url,
           published_at: publishedAt.toISOString(),
         });
-      }
-      const alreadyPosted = row?.posted_to_discord_at;
-      if (alreadyPosted || tooOld) continue;
-
-      const announced = await announce({ name: name || item.title, provider, image: item.image, url: item.url, summary: item.summary }, publishedAt);
-      if (announced) {
-        await supabase
-          .from('slot_releases')
-          .update({
-            posted_to_discord_at: new Date().toISOString(),
-            discord_message_id: announced.id || null,
-          })
-          .eq('slug', slug);
-        posted += 1;
+        inserted += 1;
       }
     } catch (e) {
       log.warn({ err: e, title: item.title }, 'process slot release failed');
     }
   }
-  log.info({ posted, total: items.length }, 'Slots check done');
-  return { posted, total: items.length };
+  // Annonce groupée (même flux que les autres sources)
+  const ann = await announceManualPending();
+  log.info({ inserted, total: items.length, announced: ann?.posted || 0 }, 'Slots check done');
+  return { inserted, total: items.length, announced: ann?.posted || 0 };
 }
 
-const SOURCE_LABELS = {
-  manual: { author: 'Annonce HugoTaSlot', footer: 'Ajout manuel · admin' },
-  bigwinboard: { author: 'Sortie de slot · BigWinBoard', footer: 'Source : BigWinBoard.com' },
-  slotcatalog: {
-    author: 'Nouvelle slot · SlotCatalog',
-    footer: 'Répertoire mondial (aligné sur les nouveautés Stake, Gamdom, Shuffle, Celsius…)'
-  },
-  stake: { author: 'Nouveauté repérée · Stake', footer: 'Détectée sur Stake.com' },
-  gamdom: { author: 'Nouveauté repérée · Gamdom', footer: 'Détectée sur Gamdom.com' },
-  shuffle: { author: 'Nouveauté repérée · Shuffle', footer: 'Détectée sur Shuffle.com' },
-  celsius: { author: 'Nouveauté repérée · Celsius', footer: 'Détectée sur Celsius.casino' },
-};
+const ANNOUNCEABLE_SOURCES = [
+  'manual',
+  'bigwinboard',
+  'slotcatalog',
+  'slotreport',
+  'stake',
+  'gamdom',
+  'shuffle',
+  'celsius',
+];
 
-const ANNOUNCEABLE_SOURCES = ['manual', 'slotcatalog', 'stake', 'gamdom', 'shuffle', 'celsius'];
+function providerKey(p) {
+  return String(p || '').trim() || 'Autres';
+}
+
+/** Groupe les rows par provider (tri alpha), slots triées par titre. */
+function groupByProvider(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const prov = providerKey(row.provider);
+    if (!map.has(prov)) map.set(prov, []);
+    map.get(prov).push(row);
+  }
+  const providers = [...map.keys()].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  return providers.map((prov) => ({
+    provider: prov,
+    slots: map.get(prov).sort((a, b) =>
+      String(a.title || '').localeCompare(String(b.title || ''), 'fr', { sensitivity: 'base' }),
+    ),
+  }));
+}
+
+function formatSlotLine(row) {
+  const title = String(row.title || 'Sans nom').trim();
+  const url = String(row.url || '').trim();
+  if (url && /^https?:\/\//i.test(url)) return `· [${title}](${url})`;
+  return `· ${title}`;
+}
 
 /**
- * Poste sur Discord toutes les rows en attente issues de :
- *  - admin manuel (source='manual')
- *  - scrapers casino (source='stake'|'gamdom'|'shuffle'|'celsius')
- * BigWinBoard est traité par runSlotsCheck() (annonce immédiate à la détection).
+ * Construit 1..n embeds : un récap joliment espacé, trié par fournisseur.
+ * Découpe si on dépasse la taille Discord.
+ */
+export function buildGroupedSlotEmbeds(rows) {
+  const groups = groupByProvider(rows);
+  const total = rows.length;
+  const header = total === 1
+    ? '**1 nouvelle slot**'
+    : `**${total} nouvelles slots**`;
+
+  const blocks = groups.map(({ provider, slots }) => {
+    const lines = slots.map(formatSlotLine).join('\n');
+    return `**${provider}**\n${lines}`;
+  });
+
+  const chunks = [];
+  let current = `${header}\n`;
+  for (const block of blocks) {
+    const next = `${current}\n${block}\n`;
+    if (next.length > DESC_MAX && current.length > header.length + 2) {
+      chunks.push(current.trimEnd());
+      current = `${header} _(suite)_\n\n${block}\n`;
+    } else {
+      current = next;
+    }
+  }
+  if (current.trim()) chunks.push(current.trimEnd());
+
+  return chunks.map((description, i) => {
+    const embed = new EmbedBuilder()
+      .setColor(COLOR)
+      .setTitle(i === 0 ? '🎰 Nouvelles sorties' : `🎰 Nouvelles sorties (${i + 1}/${chunks.length})`)
+      .setDescription(description)
+      .setTimestamp(new Date());
+    if (i === chunks.length - 1) {
+      embed.setFooter({ text: `${total} slot${total > 1 ? 's' : ''} · triées par fournisseur` });
+    }
+    return embed;
+  });
+}
+
+/**
+ * Poste sur Discord toutes les rows en attente, en **un seul message**
+ * (embeds groupés par fournisseur). Pas de mention.
  */
 export async function announceManualPending() {
   const { data, error } = await supabase
@@ -163,52 +199,51 @@ export async function announceManualPending() {
     .in('source', ANNOUNCEABLE_SOURCES)
     .is('posted_to_discord_at', null)
     .order('created_at', { ascending: true })
-    .limit(15);
+    .limit(60);
   if (error) { log.warn({ err: error }, 'fetch pending failed'); return { error: error.message }; }
-  let posted = 0;
-  for (const row of data || []) {
-    const ann = await announce(
-      { name: row.title, provider: row.provider, image: row.image, url: row.url, summary: row.summary },
-      row.published_at ? new Date(row.published_at) : new Date(),
-      row.source || 'manual'
-    );
-    if (ann) {
-      await supabase.from('slot_releases')
-        .update({ posted_to_discord_at: new Date().toISOString(), discord_message_id: ann.id || null })
-        .eq('id', row.id);
-      posted += 1;
-      // petit délai entre deux postes pour éviter le rate limit Discord
-      await new Promise((r) => setTimeout(r, 1200));
-    }
+  const rows = data || [];
+  if (!rows.length) return { posted: 0 };
+
+  const ch = await getChannelSafe(config.discord.channels.slots);
+  if (!ch) { log.warn('Channel slots non configuré ou introuvable'); return { posted: 0 }; }
+
+  const embeds = buildGroupedSlotEmbeds(rows).slice(0, 10); // limite Discord
+  let msg;
+  try {
+    msg = await ch.send({ embeds, allowedMentions: { parse: [] } });
+  } catch (e) {
+    log.warn({ err: e }, 'Discord batch send failed');
+    return { posted: 0, error: e.message };
   }
-  return { posted };
+
+  const nowIso = new Date().toISOString();
+  const ids = rows.map((r) => r.id);
+  const { error: updErr } = await supabase
+    .from('slot_releases')
+    .update({
+      posted_to_discord_at: nowIso,
+      discord_message_id: msg.id || null,
+    })
+    .in('id', ids);
+  if (updErr) log.warn({ err: updErr }, 'mark posted batch failed');
+
+  log.info({ posted: rows.length, providers: groupByProvider(rows).length }, 'Slots batch announced');
+  return { posted: rows.length, messageId: msg.id };
 }
 
-async function announce(slot, publishedAt, source = 'manual') {
+/** Envoie un digest Discord pour une liste de rows (sans toucher posted_to_discord_at). */
+export async function sendSlotsDigest(rows, { title } = {}) {
+  const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  if (!list.length) return { posted: 0, error: 'empty' };
   const ch = await getChannelSafe(config.discord.channels.slots);
-  if (!ch) { log.warn('Channel slots non configuré ou introuvable'); return null; }
-  const meta = SOURCE_LABELS[source] || SOURCE_LABELS.manual;
-  const huntPrefillUrl = buildSlotHuntPrefillUrl(slot);
-  const embed = new EmbedBuilder()
-    .setColor(0xA188A6)
-    .setAuthor({ name: meta.author })
-    .setTitle((slot.name || 'Nouvelle slot').slice(0, 250))
-    .setTimestamp(publishedAt instanceof Date ? publishedAt : new Date());
-  if (slot.url) embed.setURL(slot.url);
-  if (slot.provider) embed.addFields({ name: 'Provider', value: String(slot.provider), inline: true });
-  if (slot.image) embed.setImage(String(slot.image));
-  let desc = slot.summary ? String(slot.summary).slice(0, 280) : '';
-  if (huntPrefillUrl) {
-    const huntLine = `[➕ Ajouter au hunt sur HugoTaSlot](${huntPrefillUrl})`;
-    desc = desc ? `${desc}\n\n${huntLine}` : huntLine;
-  }
-  if (desc) embed.setDescription(desc.slice(0, 380));
-  embed.setFooter({ text: meta.footer });
-  const content = source === 'manual' ? '🎰 **Annonce HugoTaSlot**' : '🎰 **Nouvelle sortie repérée !**';
+  if (!ch) return { posted: 0, error: 'no_channel' };
+  const embeds = buildGroupedSlotEmbeds(list).slice(0, 10);
+  if (title && embeds[0]) embeds[0].setTitle(title);
   try {
-    return await ch.send({ content, embeds: [embed] });
+    const msg = await ch.send({ embeds, allowedMentions: { parse: [] } });
+    return { posted: list.length, messageId: msg.id };
   } catch (e) {
-    log.warn({ err: e }, 'Discord send failed');
-    return null;
+    log.warn({ err: e }, 'sendSlotsDigest failed');
+    return { posted: 0, error: e.message };
   }
 }

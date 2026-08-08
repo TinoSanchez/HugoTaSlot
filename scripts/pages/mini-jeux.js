@@ -68,6 +68,7 @@ function teardownActiveGame(opts = {}) {
   const keepWindow = !!(opts && opts.keepWindow);
   gameSessionToken += 1;
   plinkoStopAutoFire();
+  plinkoStopAnimEngine();
   if (typeof crashStopAnimation === 'function') crashStopAnimation();
   if (typeof crashActive !== 'undefined') crashActive = false;
   if (typeof limboRolling !== 'undefined') limboRolling = false;
@@ -133,9 +134,11 @@ function getBjTableTotal() {
   return main + pairs + p213;
 }
 function handleMainBetInput() {
-  if ((currentGame?.id || '') !== 'roulette') return;
-  syncRouletteChipFromBetInput();
-  updateRouletteUI();
+  if ((currentGame?.id || '') === 'roulette') {
+    syncRouletteChipFromBetInput();
+    updateRouletteUI();
+  }
+  if ((currentGame?.id || '') === 'plinko') updatePlinkoTotalStake();
 }
 function addBetChip(amount) {
   const input = document.getElementById('bet-input');
@@ -144,8 +147,16 @@ function addBetChip(amount) {
   input.value = (cur + amount).toFixed(2);
   casinoSfx('chip');
 }
-function betHalf() { document.getElementById('bet-input').value = (getBet() / 2).toFixed(2); casinoSfx('chip'); }
-function betDouble() { document.getElementById('bet-input').value = Math.min(getBet() * 2, getUserBalance()).toFixed(2); casinoSfx('chip'); }
+function betHalf() {
+  document.getElementById('bet-input').value = (getBet() / 2).toFixed(2);
+  casinoSfx('chip');
+  updatePlinkoTotalStake();
+}
+function betDouble() {
+  document.getElementById('bet-input').value = Math.min(getBet() * 2, getUserBalance()).toFixed(2);
+  casinoSfx('chip');
+  updatePlinkoTotalStake();
+}
 function betMax() { document.getElementById('bet-input').value = getUserBalance().toFixed(2); casinoSfx('chips'); }
 
 function previewStakeDeduction(game, bet) {
@@ -192,7 +203,7 @@ function resolveSettlementGameId(preferredGameId, bet) {
   return preferred || activeKeys[0] || 'unknown';
 }
 
-function winGame(bet, multiplier) {
+function winGame(bet, multiplier, quiet) {
   const gameId = resolveSettlementGameId(currentGame?.id || 'unknown', bet);
   const stakeState = consumeStakePreview(gameId, bet);
   const stake = stakeState.stake;
@@ -220,13 +231,14 @@ function winGame(bet, multiplier) {
     setUserBalance(stakeState.hadPreview ? (getUserBalance() + prize) : (getUserBalance() - stake + prize));
   }
   updateLobbyBalance();
-  // Feedback casino : son + célébration visuelle proportionnels au gain
   const m = Number(multiplier || 0);
-  if (m >= 10 || prize >= 100) casinoSfx('bigwin');
-  else if (m > 1.01) casinoSfx('win');
-  else if (prize > 0) casinoSfx('coin');
-  if (typeof gameWinFx === 'function' && m > 1.01) gameWinFx(prize, m);
-  if (gameId !== 'blackjack' && gameId !== 'roulette') {
+  if (!quiet) {
+    if (m >= 10 || prize >= 100) casinoSfx('bigwin');
+    else if (m > 1.01) casinoSfx('win');
+    else if (prize > 0) casinoSfx('coin');
+    if (typeof gameWinFx === 'function' && m > 1.01) gameWinFx(prize, m);
+  }
+  if (!quiet && gameId !== 'blackjack' && gameId !== 'roulette') {
     const profit = prize - stake;
     pushGameHistory(gameId, `${profit >= 0 ? 'Gagné' : 'Perdu'} | ${profit >= 0 ? '+' : ''}${fmtVirtual(profit)} | mise ${fmtVirtual(stake)}`);
   }
@@ -251,8 +263,8 @@ function loseGame(bet, sfxType) {
     if (!stakeState.hadPreview) setUserBalance(getUserBalance() - stake);
   }
   updateLobbyBalance();
-  casinoSfx(sfxType || 'lose');
-  if (gameId !== 'blackjack' && gameId !== 'roulette') {
+  if (sfxType !== null) casinoSfx(sfxType || 'lose');
+  if (sfxType !== null && gameId !== 'blackjack' && gameId !== 'roulette') {
     pushGameHistory(gameId, `Perdu | -${fmtVirtual(stake)} | mise ${fmtVirtual(stake)}`);
   }
 }
@@ -309,12 +321,20 @@ function renderGameControls(id) {
       <div class="gc-value small"><span id="game-controls-balance">${fmtVirtual(getUserBalance())}</span></div>
     </div>
     <div class="gc-block">
-      <div class="gc-title">Montant du pari</div>
+      <div class="gc-title">${id === 'plinko' ? 'Mise par bille' : 'Montant du pari'}</div>
       <div class="gc-row">
         <input type="number" class="bet-input" id="bet-input" value="1" min="0.01" step="0.01" oninput="handleMainBetInput()">
         <button class="bet-btn bet-quick-btn" onclick="betHalf()">1/2</button>
         <button class="bet-btn bet-quick-btn" onclick="betDouble()">2x</button>
       </div>
+    </div>
+    <div class="gc-block" id="plinko-balls-block" style="display:${id === 'plinko' ? 'block' : 'none'};">
+      <div class="gc-title">Nombre de billes</div>
+      <div class="gc-row plinko-balls-row">
+        ${[1, 2, 5, 10].map((n) => `<button type="button" class="bet-btn bet-quick-btn plinko-ball-btn" data-plinko-balls="${n}" onclick="setPlinkoBallCount(${n})">${n}</button>`).join('')}
+      </div>
+      <div class="gc-title" style="margin-top:8px;">Mise totale</div>
+      <div class="gc-value small"><span id="plinko-total-stake">1,00</span></div>
     </div>
     <div class="gc-block" id="rou-total-side" style="display:${id === 'roulette' ? 'block' : 'none'};">
       <div class="gc-title">Cases jouées</div>
@@ -351,7 +371,10 @@ function renderGameControls(id) {
 }
 
 function loadGameUI(id) {
-  if (id !== 'plinko') plinkoStopAutoFire();
+  if (id !== 'plinko') {
+    plinkoStopAutoFire();
+    plinkoStopAnimEngine();
+  }
   const body = document.getElementById('game-window-body');
   const ctrl = document.getElementById('game-controls');
   ctrl.style.display = 'flex';
@@ -653,7 +676,10 @@ function loadGameUI(id) {
   if (id === 'hilo') initHilo();
   if (id === 'dice') initDice();
   if (id === 'limbo') initLimbo();
-  if (id === 'plinko') initPlinkoBoard();
+  if (id === 'plinko') {
+    setPlinkoBallCount(plinkoBallCount);
+    initPlinkoBoard();
+  }
   if (id === 'roulette') initRouletteBoard();
   if (id === 'crash') initCrash();
   if (id === 'roulette') {
@@ -1105,7 +1131,27 @@ function crashMainAction() {
 }
 
 const PLINKO_MULTS = [1000, 130, 26, 9, 4, 2, 0.2, 0.2, 0.2, 0.2, 0.2, 2, 4, 9, 26, 130, 1000];
+const PLINKO_BALL_OPTIONS = [1, 2, 5, 10];
+let plinkoBallCount = 1;
+let plinkoActiveBalls = 0;
 let PLINKO_GEOMETRY = null;
+function getPlinkoBallCount() {
+  return Math.max(1, Math.min(10, Number(plinkoBallCount) || 1));
+}
+function setPlinkoBallCount(n) {
+  const v = PLINKO_BALL_OPTIONS.includes(Number(n)) ? Number(n) : 1;
+  plinkoBallCount = v;
+  document.querySelectorAll('[data-plinko-balls]').forEach((btn) => {
+    btn.classList.toggle('active', Number(btn.dataset.plinkoBalls) === v);
+  });
+  updatePlinkoTotalStake();
+  casinoSfx('chip');
+}
+function updatePlinkoTotalStake() {
+  const el = document.getElementById('plinko-total-stake');
+  if (!el) return;
+  el.textContent = fmtVirtual(getBet() * getPlinkoBallCount());
+}
 function plinkoMultLabel(mult) {
   return mult >= 1000 ? '1k' : String(mult);
 }
@@ -1155,7 +1201,8 @@ function initPlinkoBoard() {
     rowYs,
     slotLeft: 10,
     slotWidth: (w - 20) / PLINKO_MULTS.length,
-    endY: h - 44
+    endY: h - 44,
+    slotEls: [...slots.querySelectorAll('.plinko-slot')]
   };
 }
 function plinkoSimulateRun(rows) {
@@ -1187,88 +1234,212 @@ function plinkoBuildPath(decisions, targetIdx) {
   points.push({ x: targetX, y: g.endY });
   return points;
 }
-async function plinkoAnimateBall(ball, points) {
-  if (!ball || !points?.length) return;
-  let prev = { x: PLINKO_GEOMETRY?.w ? PLINKO_GEOMETRY.w / 2 : 150, y: 10 };
-  for (let i = 0; i < points.length; i++) {
-    const next = points[i];
-    const segmentMs = i === points.length - 1 ? 170 : 96;
-    if (i > 0 && i % 2 === 0) casinoSfx('tick', { pitch: 0.8 + (i / points.length) * 0.6 });
-    const segStart = performance.now();
-    await new Promise((resolve) => {
-      const step = (now) => {
-        const t = Math.max(0, Math.min(1, (now - segStart) / segmentMs));
-        const arc = Math.sin(Math.PI * t) * (i === points.length - 1 ? 2 : 5);
-        const x = prev.x + ((next.x - prev.x) * t);
-        const y = prev.y + ((next.y - prev.y) * t) - arc;
-        ball.style.left = `${x - 8}px`;
-        ball.style.top = `${y}px`;
-        if (t < 1) requestAnimationFrame(step);
-        else resolve();
-      };
-      requestAnimationFrame(step);
-    });
-    prev = next;
+
+const PLINKO_BALL_RADIUS = 8;
+const PLINKO_MAX_VISUAL = 28;
+const PLINKO_BALL_PALETTE = ['#00dc6e', '#5fd8ff', '#f2be13', '#ea4e3c', '#a855f7', '#38bdf8', '#fb7185'];
+let plinkoAnimQueue = [];
+let plinkoAnimRaf = 0;
+let plinkoLaunchHue = 0;
+let plinkoResultThrottleTs = 0;
+let plinkoBatchNet = 0;
+let plinkoBatchCount = 0;
+
+function plinkoTurboActive() {
+  return plinkoActiveBalls >= 4 || getPlinkoBallCount() >= 5 || plinkoAnimQueue.length >= 8;
+}
+function plinkoBuildAnimPlan(path, startX, startY) {
+  const turbo = plinkoTurboActive();
+  const segMs = turbo ? 46 : 84;
+  const finalMs = turbo ? 92 : 148;
+  let prev = { x: startX, y: startY };
+  let acc = 0;
+  const segments = [];
+  for (let i = 0; i < path.length; i++) {
+    const ms = i === path.length - 1 ? finalMs : segMs;
+    const t0 = acc;
+    acc += ms;
+    segments.push({ prev: { x: prev.x, y: prev.y }, next: path[i], t0, t1: acc, isFinal: i === path.length - 1 });
+    prev = path[i];
+  }
+  return { segments, totalMs: acc };
+}
+function plinkoInterpSegment(seg, t) {
+  const arc = Math.sin(Math.PI * t) * (seg.isFinal ? 2 : (plinkoTurboActive() ? 3 : 5));
+  return {
+    x: seg.prev.x + ((seg.next.x - seg.prev.x) * t),
+    y: seg.prev.y + ((seg.next.y - seg.prev.y) * t) - arc
+  };
+}
+function plinkoStopAnimEngine() {
+  if (plinkoAnimRaf) {
+    cancelAnimationFrame(plinkoAnimRaf);
+    plinkoAnimRaf = 0;
+  }
+  plinkoAnimQueue.forEach((b) => { try { b.ballEl?.remove(); } catch (_) {} });
+  plinkoAnimQueue = [];
+  plinkoActiveBalls = 0;
+  plinkoBatchNet = 0;
+  plinkoBatchCount = 0;
+}
+function plinkoEnsureAnimLoop() {
+  if (plinkoAnimRaf) return;
+  const tick = (now) => {
+    plinkoAnimTick(now);
+    plinkoAnimRaf = plinkoAnimQueue.length ? requestAnimationFrame(tick) : 0;
+  };
+  plinkoAnimRaf = requestAnimationFrame(tick);
+}
+function plinkoAnimTick(now) {
+  for (let i = plinkoAnimQueue.length - 1; i >= 0; i--) {
+    const ball = plinkoAnimQueue[i];
+    const elapsed = now - ball.startTs;
+    if (elapsed < 0) continue;
+    if (elapsed >= ball.totalMs) {
+      if (ball.ballEl) {
+        const pos = plinkoInterpSegment(ball.segments[ball.segments.length - 1], 1);
+        ball.ballEl.style.transform = `translate3d(${pos.x - PLINKO_BALL_RADIUS}px, ${pos.y}px, 0)`;
+      }
+      plinkoFinishBall(ball);
+      plinkoAnimQueue.splice(i, 1);
+      continue;
+    }
+    if (!ball.ballEl) continue;
+    let segIdx = ball.segIdx || 0;
+    while (segIdx < ball.segments.length - 1 && elapsed >= ball.segments[segIdx].t1) segIdx += 1;
+    ball.segIdx = segIdx;
+    const seg = ball.segments[segIdx];
+    const localT = Math.max(0, Math.min(1, (elapsed - seg.t0) / Math.max(1, seg.t1 - seg.t0)));
+    const pos = plinkoInterpSegment(seg, localT);
+    ball.ballEl.style.transform = `translate3d(${pos.x - PLINKO_BALL_RADIUS}px, ${pos.y}px, 0)`;
+    if (!plinkoTurboActive() && plinkoActiveBalls <= 3 && segIdx > ball.lastSfxSeg && segIdx % 2 === 0) {
+      ball.lastSfxSeg = segIdx;
+      casinoSfx('tick', { pitch: 0.85 + (segIdx / ball.segments.length) * 0.5, volume: 0.35 });
+    }
   }
 }
-
-let plinkoLaunchHue = 0;
+function plinkoUpdateResultDisplay(force = false) {
+  const res = document.getElementById('plinko-result');
+  if (!res) return;
+  const now = performance.now();
+  if (!force && now - plinkoResultThrottleTs < 90 && plinkoActiveBalls > 1) return;
+  plinkoResultThrottleTs = now;
+  if (plinkoActiveBalls > 0) {
+    res.textContent = plinkoBatchCount > 0
+      ? `${plinkoActiveBalls} en chute · lot ${plinkoBatchCount} · ${plinkoBatchNet >= 0 ? '+' : ''}${fmt(plinkoBatchNet)}`
+      : `${plinkoActiveBalls} bille${plinkoActiveBalls > 1 ? 's' : ''} en chute...`;
+    res.style.color = plinkoBatchNet >= 0 ? 'var(--gold)' : 'var(--red)';
+    return;
+  }
+  if (plinkoBatchCount > 0) {
+    res.textContent = `${plinkoBatchCount} billes · ${plinkoBatchNet >= 0 ? '+' : ''}${fmt(plinkoBatchNet)}`;
+    res.style.color = plinkoBatchNet >= 0 ? 'var(--green)' : 'var(--red)';
+    if (plinkoBatchCount > 1) {
+      pushGameHistory('plinko', `${plinkoBatchNet >= 0 ? 'Gagné' : 'Perdu'} | ${plinkoBatchNet >= 0 ? '+' : ''}${fmtVirtual(plinkoBatchNet)} | ${plinkoBatchCount} billes`);
+    }
+    plinkoBatchNet = 0;
+    plinkoBatchCount = 0;
+  }
+}
+function plinkoSettleRound(bet, mult, silent) {
+  const toastBurst = !!plinkoAutoFire || getPlinkoBallCount() > 1 || plinkoActiveBalls > 1;
+  const quiet = plinkoTurboActive() || plinkoActiveBalls > 2 || !!plinkoAutoFire;
+  if (mult > 0) {
+    winGame(bet, mult, quiet);
+    plinkoBatchNet += bet * (mult - 1);
+  } else {
+    loseGame(bet, quiet ? null : 'lose');
+    plinkoBatchNet -= bet;
+  }
+  plinkoBatchCount += 1;
+  if (!silent && !toastBurst) showToast(`Plinko ×${mult}`, mult >= 1 ? 'success' : 'error');
+  plinkoUpdateResultDisplay(false);
+}
+function plinkoFinishBall(ball) {
+  if (ball.settled) return;
+  ball.settled = true;
+  try { ball.ballEl?.remove(); } catch (_) {}
+  ball.ballEl = null;
+  if (!plinkoTurboActive() && ball.targetIdx >= 0) {
+    const slotEl = PLINKO_GEOMETRY?.slotEls?.[ball.targetIdx];
+    if (slotEl) {
+      slotEl.classList.add('hot');
+      setTimeout(() => slotEl.classList.remove('hot'), 320);
+    }
+  }
+  plinkoSettleRound(ball.bet, ball.mult, false);
+  plinkoActiveBalls = Math.max(0, plinkoActiveBalls - 1);
+  if (plinkoActiveBalls === 0) plinkoUpdateResultDisplay(true);
+}
 function plinkoShouldRebuildBoard(wrap) {
   if (!wrap) return false;
   if (!wrap.querySelector('.plinko-slots')) return true;
   const expectW = Math.max(260, wrap.clientWidth || 300);
   if (PLINKO_GEOMETRY && Math.abs(PLINKO_GEOMETRY.w - expectW) <= 2) return false;
-  if (wrap.querySelector('.plinko-ball')) return false;
+  if (plinkoAnimQueue.length > 0) return false;
   return true;
 }
-async function plinkoExecuteRound(bet) {
+function plinkoLaunchOneBall(bet, opts = {}) {
   previewStakeDeduction('plinko', bet);
   const wrap = document.getElementById('plinko-container');
   if (plinkoShouldRebuildBoard(wrap)) initPlinkoBoard();
-  const run = plinkoSimulateRun(PLINKO_GEOMETRY?.rows || 16);
+  const g = PLINKO_GEOMETRY;
+  const run = plinkoSimulateRun(g?.rows || 16);
   const targetIdx = Math.max(0, Math.min(PLINKO_MULTS.length - 1, run.slotIdx));
   const mult = PLINKO_MULTS[targetIdx];
-  const res = document.getElementById('plinko-result');
-  let reachedSlot = false;
-  if (wrap && PLINKO_GEOMETRY) {
-    const slotEls = [...wrap.querySelectorAll('.plinko-slot')];
-    const g = PLINKO_GEOMETRY;
-    const ball = document.createElement('div');
-    ball.className = 'plinko-ball';
-    plinkoLaunchHue = (plinkoLaunchHue + 47) % 360;
-    ball.style.filter = `hue-rotate(${plinkoLaunchHue}deg)`;
-    const jitter = (Math.random() - 0.5) * 6;
-    ball.style.left = `${((g?.w || 300) / 2) - 8 + jitter}px`;
-    ball.style.top = `10px`;
-    wrap.appendChild(ball);
-    const path = plinkoBuildPath(run.decisions, targetIdx);
-    await plinkoAnimateBall(ball, path);
-    reachedSlot = true;
-    if (slotEls[targetIdx]) slotEls[targetIdx].classList.add('hot');
-    await gameSleep(110);
-    try { ball.remove(); } catch (_) {}
+  plinkoActiveBalls += 1;
+  plinkoUpdateResultDisplay(true);
+
+  const startX = (g?.w || 300) / 2;
+  const batchOffset = (Number(opts.batchIndex) || 0) * 4;
+  const startY = 10;
+  const jitter = (Math.random() - 0.5) * 5 + batchOffset;
+  const path = plinkoBuildPath(run.decisions, targetIdx);
+  const plan = plinkoBuildAnimPlan(path, startX + jitter, startY);
+  const instant = plinkoAnimQueue.length >= PLINKO_MAX_VISUAL || !wrap || !g;
+
+  if (instant) {
+    plinkoSettleRound(bet, mult, true);
+    plinkoActiveBalls = Math.max(0, plinkoActiveBalls - 1);
+    if (plinkoActiveBalls === 0) plinkoUpdateResultDisplay(true);
+    return;
   }
-  if (res) res.textContent = 'En chute...';
-  if (!reachedSlot) await gameSleep(120);
-  const toastBurst = !!plinkoAutoFire;
-  if (mult > 0) {
-    winGame(bet, mult);
-    const net = bet * (mult - 1);
-    if (res) {
-      res.textContent = `×${mult} — ${net >= 0 ? '+' : ''}${fmt(net)}`;
-      res.style.color = mult >= 1 ? 'var(--green)' : 'var(--red)';
-    }
-    if (!toastBurst) showToast(`Plinko ×${mult}`, mult >= 1 ? 'success' : 'error');
+
+  const ballEl = document.createElement('div');
+  ballEl.className = 'plinko-ball';
+  plinkoLaunchHue = (plinkoLaunchHue + 1) % PLINKO_BALL_PALETTE.length;
+  if (plinkoTurboActive()) {
+    ballEl.style.background = PLINKO_BALL_PALETTE[plinkoLaunchHue];
+    ballEl.style.boxShadow = `0 0 6px ${PLINKO_BALL_PALETTE[plinkoLaunchHue]}`;
   } else {
-    loseGame(bet);
-    if (res) {
-      res.textContent = `×${mult} — ${fmt(-bet)}`;
-      res.style.color = 'var(--red)';
-    }
-    if (!toastBurst) showToast(`Plinko ×${mult}`, 'error');
+    ballEl.style.filter = `hue-rotate(${(plinkoLaunchHue * 47) % 360}deg)`;
   }
-  return true;
+  ballEl.style.zIndex = String(4 + (plinkoAnimQueue.length % 20));
+  ballEl.style.transform = `translate3d(${startX + jitter - PLINKO_BALL_RADIUS}px, ${startY}px, 0)`;
+  wrap.appendChild(ballEl);
+
+  plinkoAnimQueue.push({
+    ballEl,
+    segments: plan.segments,
+    totalMs: plan.totalMs,
+    startTs: performance.now() + (Number(opts.staggerMs) || 0),
+    bet,
+    mult,
+    targetIdx,
+    segIdx: 0,
+    lastSfxSeg: -1,
+    settled: false
+  });
+  plinkoEnsureAnimLoop();
 }
+function plinkoLaunchBatch(betPerBall, count) {
+  const n = Math.max(1, Math.min(10, Number(count) || 1));
+  const stagger = plinkoTurboActive() ? 28 : 52;
+  for (let i = 0; i < n; i++) {
+    plinkoLaunchOneBall(betPerBall, { batchIndex: i, batchTotal: n, staggerMs: i * stagger });
+  }
+}
+
 let plinkoAutoFire = null;
 let plinkoBlockSynthClickUntil = 0;
 let plinkoLastFingerDown = 0;
@@ -1277,6 +1448,11 @@ function plinkoStopAutoFire() {
     clearInterval(plinkoAutoFire);
     plinkoAutoFire = null;
   }
+}
+function plinkoAutoFireIntervalMs() {
+  const balls = getPlinkoBallCount();
+  const load = plinkoActiveBalls + plinkoAnimQueue.length;
+  return Math.min(420, 160 + (balls * 22) + (load * 6));
 }
 function plinkoPressStart(e) {
   if (!currentGame || currentGame.id !== 'plinko') return;
@@ -1287,13 +1463,14 @@ function plinkoPressStart(e) {
   plinkoBlockSynthClickUntil = now + 950;
   if (plinkoAutoFire) return;
   playGame();
+  const intervalMs = plinkoAutoFireIntervalMs();
   plinkoAutoFire = setInterval(() => {
     if (!currentGame || currentGame.id !== 'plinko') {
       plinkoStopAutoFire();
       return;
     }
     playGame();
-  }, 190);
+  }, intervalMs);
 }
 function plinkoPressEnd() {
   plinkoStopAutoFire();
@@ -2184,7 +2361,7 @@ async function miniBjStand() {
 }
 
 async function loadGamePlay(id) {
-  const nonSpamGames = { blackjack: 1, keno: 1, roulette: 1, plinko: 1 };
+  const nonSpamGames = { blackjack: 1, keno: 1, roulette: 1 };
   window._gameRoundLocks = window._gameRoundLocks || Object.create(null);
   const lockKey = nonSpamGames[id] ? String(id) : '';
   if (lockKey && window._gameRoundLocks[lockKey]) {
@@ -2449,7 +2626,13 @@ async function loadGamePlay(id) {
   }
 
   if (id === 'plinko') {
-    await plinkoExecuteRound(bet);
+    const ballCount = getPlinkoBallCount();
+    const totalStake = bet * ballCount;
+    if (totalStake > bal + 1e-9) {
+      showToast(`Solde insuffisant pour ${ballCount} billes`, 'error');
+      return;
+    }
+    void plinkoLaunchBatch(bet, ballCount);
     return;
   }
 

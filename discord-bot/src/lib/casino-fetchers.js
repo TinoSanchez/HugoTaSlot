@@ -371,9 +371,48 @@ export async function fetchSlotcatalogNewReleases() {
   return out;
 }
 
+/* ─── SLOT.REPORT ────────────────────────────────────────────────────────
+ * API publique : /api/v1/new.json — ~30 dernières sorties (fallback fiable
+ * quand SlotCatalog/Jina ou les casinos FR/ANJ sont injoignables).
+ * ────────────────────────────────────────────────────────────────────── */
+const SLOTREPORT_NEW = 'https://slot.report/api/v1/new.json';
+
+export async function fetchSlotreportNewReleases() {
+  try {
+    const { statusCode, body } = await httpGet(SLOTREPORT_NEW, {
+      headers: { accept: 'application/json,*/*', referer: 'https://slot.report/' },
+      timeoutMs: 25_000,
+    });
+    if (statusCode < 200 || statusCode >= 300) {
+      log.warn({ casino: 'slotreport', http: statusCode }, 'slot.report non OK');
+      return [];
+    }
+    const data = await body.json().catch(() => null);
+    const list = Array.isArray(data) ? data
+      : (data?.slots || data?.games || data?.data || data?.results || []);
+    const out = (Array.isArray(list) ? list : []).map((g) => {
+      const name = g.name || g.title || g.slot_name || '';
+      const provider = g.provider_name || g.provider || g.studio || '';
+      const slug = g.slug || g.slot_slug || '';
+      const image = g.image || g.thumbnail || g.image_url || g.thumb || '';
+      const url = g.url
+        || (slug ? `https://slot.report/slots/${slug}` : '')
+        || (slug ? `https://slotcatalog.com/en/slots/${slug}` : '');
+      const publishedAt = g.release_date || g.released_at || g.date || null;
+      return { name, provider, image, url, publishedAt };
+    }).filter((g) => g.name);
+    log.info({ casino: 'slotreport', total: out.length }, 'slot.report new.json');
+    return out;
+  } catch (e) {
+    log.warn({ casino: 'slotreport', err: shortErr(e) }, 'slot.report failed');
+    return [];
+  }
+}
+
 /* ─── REGISTRE PUBLIC ────────────────────────────────────────────────── */
 export const casinoFetchers = {
   slotcatalog: fetchSlotcatalogNewReleases,
+  slotreport: fetchSlotreportNewReleases,
   stake: fetchStakeNewReleases,
   gamdom: fetchGamdomNewReleases,
   shuffle: fetchShuffleNewReleases,
@@ -382,6 +421,7 @@ export const casinoFetchers = {
 
 export const casinoLabels = {
   slotcatalog: 'SlotCatalog',
+  slotreport: 'slot.report',
   stake: 'Stake',
   gamdom: 'Gamdom',
   shuffle: 'Shuffle',

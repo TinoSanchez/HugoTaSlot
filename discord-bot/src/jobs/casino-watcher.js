@@ -9,7 +9,7 @@ const log = child({ mod: 'casino-watcher' });
 // SlotCatalog indexe les nouvelles sorties des studios (mêmes jeux que sur Stake, Gamdom, Shuffle, Celsius, etc.) ;
 // inutile d’appeler chaque site (Cloudflare + SPA) quand le répertoire est à jour.
 // Autres clés (stake, gamdom, …) = expérimental, souvent bloqué en prod.
-const ENABLED_SOURCES = (process.env.CASINO_SOURCES || 'slotcatalog')
+const ENABLED_SOURCES = (process.env.CASINO_SOURCES || 'slotcatalog,slotreport')
   .split(',')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
@@ -64,9 +64,13 @@ async function processOneSource(source, fetcher, catalog) {
       : new Date().toISOString();
     const summary = source === 'slotcatalog'
       ? 'Nouvelle sortie (SlotCatalog : même périmètre que les catalogues Stake, Gamdom, Shuffle, Celsius et autres casinos au moment de la sortie).'
-      : `Nouvelle sortie repérée via ${label}.`;
+      : source === 'slotreport'
+        ? 'Nouvelle sortie (slot.report — radar multi-casinos / studios).'
+        : `Nouvelle sortie repérée via ${label}.`;
+    // `slotreport` peut ne pas encore être dans le CHECK SQL prod → fallback `slotcatalog`.
+    const dbSource = source === 'slotreport' ? 'slotcatalog' : source;
     candidates.push({
-      source,
+      source: dbSource,
       slug,
       title: name,
       provider: safeStr(g.provider, 80) || null,

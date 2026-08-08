@@ -89,7 +89,11 @@ async function announce(item, channelId) {
     .setFooter({ text: `YouTube · ${label}` });
   if (item.summary) embed.setDescription(item.summary.slice(0, 350));
   try {
-    return await ch.send({ content: `🎬 **${label}** vient de poster une vidéo !`, embeds: [embed] });
+    return await ch.send({
+      content: `@everyone 🎬 **${label}** vient de poster une vidéo !`,
+      embeds: [embed],
+      allowedMentions: { parse: ['everyone'] },
+    });
   } catch (e) {
     log.warn({ err: e }, 'Discord send failed');
     return null;

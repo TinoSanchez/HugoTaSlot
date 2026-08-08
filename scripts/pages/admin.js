@@ -643,26 +643,33 @@ async function adminDeleteHuntByIdAsync(huntId) {
 async function adminFetchCloudUsers() {
   const cacheKey = 'users:list';
   const cached = getCacheEntry('admin', cacheKey, CACHE_TTL.adminUsers);
-  if (cached) return Array.isArray(cached) ? cached.map((u) => ({ ...u })) : [];
+  if (cached && cached.length) return Array.isArray(cached) ? cached.map((u) => ({ ...u })) : [];
+  if (typeof ensureCloudSession === 'function') {
+    const session = await ensureCloudSession({ refresh: true, promptLogin: false });
+    if (!session?.access_token) return [];
+  }
   const c = getAuthClient();
   const { data, error } = await cloudCall('admin', () => c.rpc('admin_list_users'), { retries: 1, timeoutMs: 12000, delayMs: 500, quiet: true });
   if (error) throw error;
   const next = (data || []).map(u => ({
     id: u.id,
-    username: u.username || (u.email ? String(u.email).split('@')[0] : 'player'),
+    username: u.username || u.display_name || (u.email ? String(u.email).split('@')[0] : 'player'),
     role: u.role || 'player',
     status: u.status || 'active',
     balance: Number(u.balance_amount || 0),
     email: u.email || ''
   }));
-  setCacheEntry('admin', cacheKey, next);
+  if (next.length) setCacheEntry('admin', cacheKey, next);
   return next.map((u) => ({ ...u }));
 }
 async function adminFetchCloudHunts() {
   const cacheKey = 'hunts:list';
   const cached = getCacheEntry('admin', cacheKey, CACHE_TTL.adminHunts);
-  if (cached) return Array.isArray(cached) ? cached.map((h) => ({ ...h })) : [];
-  const c = getAuthClient();
+  if (cached && cached.length) return Array.isArray(cached) ? cached.map((h) => ({ ...h })) : [];
+  if (typeof ensureCloudSession === 'function') {
+    const session = await ensureCloudSession({ refresh: true, promptLogin: false });
+    if (!session?.access_token) return [];
+  }
   const { data, error } = await cloudCall('admin', () => c
     .from('hunts')
     .select('id,name,currency,starting_balance,hunt_bonuses(id)')
@@ -676,7 +683,7 @@ async function adminFetchCloudHunts() {
     startBalance: Number(h.starting_balance || 0),
     bonusCount: Array.isArray(h.hunt_bonuses) ? h.hunt_bonuses.length : 0
   }));
-  setCacheEntry('admin', cacheKey, next);
+  if (next.length) setCacheEntry('admin', cacheKey, next);
   return next.map((h) => ({ ...h }));
 }
 async function adminFetchCloudLogs() {
@@ -792,18 +799,31 @@ async function renderAdminPanel() {
   let cloudLogs = [];
   let cloudFeedbacks = [];
   let feedbackLoadErr = null;
+  let adminCloudLoadErr = null;
   if (isCloud) {
-    try {
-      cloudUsers = await adminFetchCloudUsers();
-      cloudHunts = await adminFetchCloudHunts();
-      cloudLogs = await adminFetchCloudLogs();
-      try {
-        cloudFeedbacks = await adminFetchCloudFeedback();
-      } catch (fe) {
-        feedbackLoadErr = fe;
+    if (typeof ensureCloudSession === 'function') {
+      const session = await ensureCloudSession({ refresh: true, promptLogin: false });
+      if (!session?.access_token) {
+        adminCloudLoadErr = new Error('Session Supabase expirée — reconnecte-toi pour gérer les joueurs.');
       }
-    } catch (e) {
-      showToast(mapAuthError(e), 'error');
+    }
+    if (!adminCloudLoadErr) {
+      try {
+        cloudUsers = await adminFetchCloudUsers();
+        cloudHunts = await adminFetchCloudHunts();
+        cloudLogs = await adminFetchCloudLogs();
+        try {
+          cloudFeedbacks = await adminFetchCloudFeedback();
+        } catch (fe) {
+          feedbackLoadErr = fe;
+        }
+        if (!cloudUsers.length && isCurrentUserAdmin()) {
+          adminCloudLoadErr = new Error('admin_bootstrap_required');
+        }
+      } catch (e) {
+        adminCloudLoadErr = e;
+        showToast(mapAuthError(e), 'error');
+      }
     }
   }
   const userEntries = isCloud ? cloudUsers : Object.values(usersMap);
@@ -845,6 +865,20 @@ async function renderAdminPanel() {
 
   const usersTable = document.getElementById('admin-users-table');
   if (usersTable) {
+    if (adminCloudLoadErr) {
+      const isBootstrap = String(adminCloudLoadErr?.message || '') === 'admin_bootstrap_required';
+      usersTable.innerHTML = `
+        <div class="bj-rec" style="color:#ffb4c4;margin-bottom:10px;">
+          ${isBootstrap
+            ? `Accès admin UI actif, mais Supabase ne renvoie aucun joueur.<br>
+               Exécute <code>supabase/migrations/20260710_admin_owner_bootstrap.sql</code> dans Supabase → SQL Editor, puis reconnecte-toi.`
+            : escapeHtml(mapAuthError(adminCloudLoadErr))}
+        </div>
+        <div class="admin-toolbar">
+          <button type="button" class="profile-mini-btn primary" onclick="invalidateCache('admin');renderAdminPanel().catch(()=>{})">Rafraîchir la liste</button>
+          <button type="button" class="profile-mini-btn" onclick="forceCloudReauth('Reconnecte-toi pour rétablir l’accès admin.')">Reconnecter</button>
+        </div>`;
+    } else {
     const allRows = (isCloud ? cloudUsers.map((u) => [u.username, u]) : Object.entries(usersMap));
     const currentUsernameLower = String(currentUser?.username || '').toLowerCase();
     const currentUserId = String(currentUser?.id || '');
@@ -941,10 +975,14 @@ async function renderAdminPanel() {
     if (sortEl) sortEl.onchange = () => { adminViewState.sort = sortEl.value || 'name_asc'; adminViewState.page = 1; renderAdminPanel(); };
     if (prevEl) prevEl.onclick = () => { adminViewState.page = Math.max(1, adminViewState.page - 1); renderAdminPanel(); };
     if (nextEl) nextEl.onclick = () => { adminViewState.page = Math.min(totalPages, adminViewState.page + 1); renderAdminPanel(); };
+    }
   }
 
   const huntsTable = document.getElementById('admin-hunts-table');
   if (huntsTable) {
+    if (adminCloudLoadErr) {
+      huntsTable.innerHTML = `<div class="bj-rec" style="color:var(--text-dim);">Hunts cloud indisponibles tant que l’accès admin Supabase n’est pas rétabli.</div>`;
+    } else {
     huntsTable.innerHTML = `
       <div class="table-wrap">
         <table style="width:100%;border-collapse:collapse;">
@@ -972,6 +1010,7 @@ async function renderAdminPanel() {
         </table>
       </div>
     `;
+    }
   }
   const feedbackTable = document.getElementById('admin-feedback-table');
   if (feedbackTable) {

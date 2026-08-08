@@ -1,7 +1,7 @@
 /* Service worker — cache shell statique (pas jeux.json ni API). */
 'use strict';
 
-const CACHE = 'hugotaslot-shell-20260608-0307';
+const CACHE = 'hugotaslot-shell-20260710-pseudo';
 const PRECACHE = [
   './',
   './index.html',
@@ -22,6 +22,8 @@ function shouldBypassCache(url) {
   const p = url.pathname;
   if (p.includes('jeux.json') || p.includes('jeux-embed.js')) return true;
   if (p.includes('/client-api/') || p.includes('supabase')) return true;
+  if (p.includes('/scripts/pages/')) return true;
+  if (p.includes('paris-sportifs')) return true;
   return false;
 }
 
@@ -47,7 +49,9 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     (async () => {
-      const networkFirst = url.pathname.endsWith('/app.js') || url.pathname.endsWith('/index.html');
+      const networkFirst = url.pathname.endsWith('/app.js')
+        || url.pathname.endsWith('/index.html')
+        || url.pathname.includes('/scripts/pages/');
       if (networkFirst) {
         try {
           const res = await fetch(event.request);

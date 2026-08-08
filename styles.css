@@ -1447,6 +1447,31 @@
   .auth-switch span { color: var(--gold); text-decoration: underline; }
   .auth-error { background: rgba(255,61,90,0.08); border: 1px solid rgba(255,61,90,0.3); border-radius: var(--radius-sm); padding: 10px 14px; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--red); margin-bottom: 14px; display: none; }
   .auth-error.show { display: block; }
+  .auth-oauth { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
+  .auth-oauth-btn {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    width: 100%; height: 46px; padding: 0 16px;
+    background: rgba(255,255,255,0.03); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 14px;
+    letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+    transition: var(--transition); position: relative;
+  }
+  .auth-oauth-btn svg { flex-shrink: 0; }
+  .auth-oauth-btn:hover { border-color: var(--border-bright); background: rgba(255,255,255,0.06); transform: translateY(-1px); }
+  .auth-oauth-btn:active { transform: translateY(0); }
+  .auth-oauth-btn.google:hover { border-color: rgba(234,67,53,0.5); box-shadow: 0 4px 14px rgba(234,67,53,0.15); }
+  .auth-oauth-btn.discord:hover { border-color: rgba(88,101,242,0.5); box-shadow: 0 4px 14px rgba(88,101,242,0.15); }
+  .auth-oauth-btn.facebook:hover { border-color: rgba(24,119,242,0.5); box-shadow: 0 4px 14px rgba(24,119,242,0.15); }
+  .auth-divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 18px 0 14px;
+    font-family: 'Share Tech Mono', monospace; font-size: 10px;
+    color: var(--text-muted); letter-spacing: 3px;
+  }
+  .auth-divider::before, .auth-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
 
   /* Profile badge in header */
   .profile-badge {
@@ -3116,6 +3141,7 @@
     background: linear-gradient(180deg, rgba(4,22,40,0.94), rgba(4,20,34,0.98));
     border-radius: 16px;
     box-shadow: inset 0 30px 80px rgba(71,143,236,0.09), inset 0 -30px 70px rgba(0,0,0,0.3), 0 18px 40px rgba(0,0,0,0.28);
+    contain: layout paint;
   }
   .game-window.da-pro .plinko-pin {
     width: 8px;
@@ -3126,10 +3152,13 @@
   .game-window.da-pro .plinko-ball {
     width: 16px;
     height: 16px;
+    left: 0;
+    top: 0;
     border: 1px solid rgba(193,237,255,0.82);
     background: radial-gradient(circle at 30% 28%, #ecfcff, #5fd8ff 50%, #1886d9 100%);
     box-shadow: 0 0 16px rgba(89,202,255,0.68), 0 0 32px rgba(50,140,245,0.42);
     z-index: 3;
+    will-change: transform;
   }
   .game-window.da-pro .plinko-slots {
     position: absolute;
@@ -4472,9 +4501,11 @@
   }
 
   /* Plinko */
-  .plinko-container { width: 300px; height: 300px; background: linear-gradient(180deg, rgba(0,220,110,0.08), rgba(7,10,18,0.95)); border-radius: var(--radius-sm); border: 1px solid var(--border); position: relative; overflow: hidden; margin: 0 auto; }
-  .plinko-pin { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
-  .plinko-ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); transition: all 0.1s; }
+  .plinko-container { width: 300px; height: 300px; background: linear-gradient(180deg, rgba(0,220,110,0.08), rgba(7,10,18,0.95)); border-radius: var(--radius-sm); border: 1px solid var(--border); position: relative; overflow: hidden; margin: 0 auto; contain: layout paint; }
+  .plinko-pin { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); pointer-events: none; }
+  .plinko-ball { position: absolute; left: 0; top: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); z-index: 3; will-change: transform; pointer-events: none; }
+  .plinko-balls-row { flex-wrap: wrap; gap: 6px; }
+  .plinko-ball-btn.active { border-color: var(--green); color: var(--green); box-shadow: 0 0 0 1px rgba(0,220,110,0.35); }
 
   /* HiLo */
   .hilo-card {
@@ -5810,3 +5841,5 @@
   .stat-value.gold { color: var(--gold-true); }
 }
 
+
+/* --- Paris sportifs (page /paris-sportifs) ---------------------------------- */

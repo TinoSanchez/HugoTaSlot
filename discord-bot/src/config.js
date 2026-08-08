@@ -28,6 +28,10 @@ export const config = {
     channels: {
       youtube: opt('DISCORD_CHANNEL_YOUTUBE', ''),
       slots: opt('DISCORD_CHANNEL_SLOTS', ''),
+      rumble: opt('DISCORD_CHANNEL_RUMBLE', ''),
+      rumbleLive: opt('DISCORD_CHANNEL_RUMBLE_LIVE', ''),
+      pronos: opt('DISCORD_CHANNEL_PRONOS', ''),
+      calls: opt('DISCORD_CHANNEL_CALLS', ''),
     },
   },
   supabase: {
@@ -43,12 +47,51 @@ export const config = {
       return id ? `https://www.youtube.com/feeds/videos.xml?channel_id=${id}` : '';
     },
   },
+  rumble: {
+    userSlug: opt('RUMBLE_USER_SLUG', '19enplein'),
+    channelUrl: opt('RUMBLE_CHANNEL_URL', 'https://rumble.com/user/19enplein'),
+    channelLabel: opt('RUMBLE_CHANNEL_LABEL', '19enplein'),
+    liveApiUrl: opt('RUMBLE_LIVE_API_URL', ''),
+  },
+  propline: {
+    apiKey: opt('PROPLINE_API_KEY', ''),
+    baseUrl: opt('PROPLINE_BASE_URL', 'https://api.prop-line.com/v1'),
+    /** Sports à synchroniser. `all` (défaut) = tous les sports actifs via GET /v1/sports. */
+    sportsEnv: opt('PROPLINE_SPORTS', 'all'),
+    /** Cache de la liste /sports (ms) — évite 1 req API à chaque cron. */
+    sportsCacheMs: Math.max(60_000, parseInt(opt('PROPLINE_SPORTS_CACHE_MS', '3600000'), 10) || 3_600_000),
+    /** Pause entre chaque sport lors du sync (ms) — respect quota API. */
+    syncDelayMs: Math.max(0, parseInt(opt('PROPLINE_SYNC_DELAY_MS', '120'), 10) || 120),
+    /** Marchés fetchés pour chaque event (CSV). */
+    markets: (opt(
+      'PROPLINE_MARKETS',
+      ['h2h', 'totals', 'spreads', 'correct_score', 'both_teams_to_score', 'double_chance'].join(','),
+    ) || '').split(',').map((s) => s.trim()).filter(Boolean),
+    /** Fenêtre d'anticipation (heures) : sync uniquement les matchs commençant dans les X h. */
+    hoursAhead: parseInt(opt('PROPLINE_HOURS_AHEAD', '168'), 10) || 168, // 7 jours
+    /** Bookmaker prioritaire pour l'affichage (mais on stocke tous les books). */
+    primaryBookmaker: opt('PROPLINE_PRIMARY_BOOKMAKER', 'pinnacle'),
+    /** `active` = cotes seulement pour sport_keys présents en base (économise ~50 % quota). */
+    oddsScope: (opt('PROPLINE_ODDS_SCOPE', 'active') || 'active').toLowerCase(),
+    /** Intervalle sync scores PropLine hors-foot (ms) — défaut 45 s si live. */
+    scoresIntervalMs: Math.max(30_000, parseInt(opt('PROPLINE_SCORES_INTERVAL_MS', '45000'), 10) || 45_000),
+    /** Intervalle sync scores foot ESPN (ms) — 0 quota PropLine. */
+    espnScoresIntervalMs: Math.max(15_000, parseInt(opt('ESPN_SCORES_INTERVAL_MS', '30000'), 10) || 30_000),
+  },
   bigwinboard: {
     rss: opt('BIGWINBOARD_RSS', 'https://bigwinboard.com/feed/'),
   },
   cron: {
     youtube: opt('CRON_YOUTUBE', '*/10 * * * *'),
+    rumble: opt('CRON_RUMBLE', '*/10 * * * *'),
+    rumbleLive: opt('CRON_RUMBLE_LIVE', '*/3 * * * *'),
     slots: opt('CRON_SLOTS', '*/30 * * * *'),
+    /** Sync PropLine (matchs + cotes) — 5 min, sports actifs en base (~8–15k req/j). */
+    sportsOdds: opt('CRON_SPORTS_ODDS', '*/5 * * * *'),
+    /** Scores PropLine (hors-foot live) — cron secours 1 min ; boucle rapide via setInterval. */
+    sportsScores: opt('CRON_SPORTS_SCORES', '*/1 * * * *'),
+    /** Règlement paris — toutes les 5 min. */
+    sportsSettle: opt('CRON_SPORTS_SETTLE', '*/5 * * * *'),
     initialDelayMs: parseInt(opt('INITIAL_DELAY_MS', '8000'), 10),
   },
   site: {

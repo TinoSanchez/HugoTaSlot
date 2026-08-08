@@ -56,6 +56,7 @@ const PAGE_TO_SLUG = Object.freeze({
   admin: 'admin',
   roue_multi: 'roue-multi-tirages',
   roue_tournoi_equipes: 'roue-tournoi-equipes',
+  paris_sportifs: 'paris-sportifs',
 });
 const SLUG_TO_PAGE = (() => {
   const m = Object.create(null);
@@ -79,6 +80,7 @@ const PAGE_TITLES = Object.freeze({
   admin: 'Admin',
   roue_multi: 'Roue Multi-Tirages',
   roue_tournoi_equipes: 'Roue Tournoi Équipes',
+  paris_sportifs: 'Paris Sportifs',
 });
 const SITE_NAME = 'HugoTaSlot X 19EnPlein';
 function pageToPath(page) {
@@ -333,6 +335,7 @@ function switchPage(page, opts) {
           flushFeedbackQueue().catch(() => {});
         };
         case 'news': return () => { if (typeof renderNewsPage === 'function') renderNewsPage(); };
+        case 'paris_sportifs': return () => { if (typeof renderParisSportifsPage === 'function') renderParisSportifsPage(); };
         default: return null;
       }
     })(page);
@@ -803,6 +806,120 @@ const __PAGE_HTML = {
     <iframe class="roue-embed-frame" src="./roue-tournoi-equipes.html" title="19enplein - Roue Tournoi Casino"></iframe>
   </div>
 </div>
+  `,
+  paris_sportifs: `
+<div class="page-panel ps-wmx" id="page-paris-sportifs">
+  <header class="ps-wmx-header">
+    <div class="ps-wmx-header-brand">
+      <span class="ps-wmx-logo">Paris Sportifs</span>
+      <span class="ps-wmx-tagline">HugoCoins · virtuel</span>
+    </div>
+    <nav class="ps-wmx-header-nav" role="tablist">
+      <button type="button" class="ps-main-tab active" data-tab="matches" role="tab">Matchs</button>
+      <button type="button" class="ps-main-tab ps-main-tab--live" data-tab="live" role="tab">En direct <span class="ps-live-tab-count"></span></button>
+      <button type="button" class="ps-main-tab" data-tab="mine" role="tab">Mes paris</button>
+      <button type="button" class="ps-main-tab" data-tab="leaderboard" role="tab">Classement</button>
+    </nav>
+    <div class="ps-wmx-header-right">
+      <button type="button" class="ps-wmx-bonus-btn" id="ps-bonus-btn" title="Bonus quotidien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/></svg>
+        Bonus
+      </button>
+      <div class="ps-wmx-balance" id="ps-wallet-badge">
+        <span class="ps-wmx-balance-label">Solde</span>
+        <span class="ps-wmx-balance-val" id="ps-wallet-amount">—</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="ps-wmx-legal">
+    <strong>100 % virtuel</strong> · Aucune mise d'argent réel · Les HugoCoins n'ont aucune valeur monétaire.
+  </div>
+
+  <div class="ps-wmx-shell" id="ps-wmx-shell-matches">
+    <aside class="ps-wmx-sidebar" id="ps-sidebar-competitions" aria-label="Compétitions"></aside>
+    <main class="ps-wmx-main">
+      <div class="ps-wmx-toolbar">
+        <input type="search" id="ps-search" class="ps-wmx-search" placeholder="Rechercher une équipe, un joueur…" autocomplete="off">
+      </div>
+      <div class="ps-wmx-sport-strip-wrap">
+        <nav class="ps-wmx-sport-strip" id="ps-sport-nav" aria-label="Sports"></nav>
+      </div>
+      <div class="ps-wmx-matches" id="ps-leagues-container">
+        <div class="ps-empty">Chargement des matchs…</div>
+      </div>
+    </main>
+    <aside class="ps-wmx-betslip" id="ps-betslip" aria-label="Panier de paris">
+      <div class="ps-slip-head">
+        <span class="ps-slip-count" id="ps-slip-count">0 sélection</span>
+        <button type="button" class="ps-slip-clear" id="ps-slip-clear" title="Vider le panier" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div>
+      <div class="ps-slip-tabs">
+        <button type="button" class="ps-slip-tab active" data-slip-mode="simple">Simple</button>
+        <button type="button" class="ps-slip-tab" data-slip-mode="combo">Combiné</button>
+      </div>
+      <div class="ps-slip-body" id="ps-slip-body">
+        <div class="ps-slip-empty" id="ps-slip-empty">
+          <div class="ps-slip-empty-icon">🎒</div>
+          <p>Ton panier est vide !</p>
+          <span>Ajoute tes paris en cliquant sur les cotes.</span>
+        </div>
+        <div class="ps-slip-list" id="ps-slip-list" hidden></div>
+      </div>
+      <div class="ps-slip-footer" id="ps-slip-footer" hidden>
+        <label class="ps-slip-stake-label">Mise (HC)
+          <input type="number" id="ps-slip-stake" class="ps-slip-stake-input" min="10" max="500000" step="10" value="100">
+        </label>
+        <div class="ps-slip-quick">
+          <button type="button" class="ps-slip-quick-btn" data-stake="50">50</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="100">100</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="500">500</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="1000">1K</button>
+          <button type="button" class="ps-slip-quick-btn" data-stake="max">Max</button>
+        </div>
+        <div class="ps-slip-gains">
+          <span>Cote totale</span>
+          <strong id="ps-slip-total-odd">—</strong>
+        </div>
+        <div class="ps-slip-gains">
+          <span>Gains potentiels</span>
+          <strong id="ps-slip-payout">0 HC</strong>
+        </div>
+        <button type="button" class="ps-slip-submit" id="ps-slip-submit" disabled>Parier</button>
+        <div class="ps-slip-error" id="ps-slip-error" hidden></div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="ps-wmx-full" id="ps-section-mine" hidden>
+    <div class="ps-mine-filters">
+      <button type="button" class="ps-mine-filter active" data-filter="all">Tous</button>
+      <button type="button" class="ps-mine-filter" data-filter="pending">En cours</button>
+      <button type="button" class="ps-mine-filter" data-filter="won">Gagnés</button>
+      <button type="button" class="ps-mine-filter" data-filter="lost">Perdus</button>
+    </div>
+    <div class="ps-mine-summary" id="ps-mine-summary"></div>
+    <div class="ps-mine-list" id="ps-mine-list"><div class="ps-empty">Chargement…</div></div>
+  </section>
+
+  <section class="ps-wmx-full" id="ps-section-leaderboard" hidden>
+    <div class="ps-leaderboard-header">
+      <h3>Top parieurs du mois</h3>
+      <p class="ps-leaderboard-sub">Profit net · reset le 1er du mois</p>
+    </div>
+    <div class="ps-leaderboard" id="ps-leaderboard-list"><div class="ps-empty">Chargement…</div></div>
+  </section>
+
+  <div class="ps-match-detail" id="ps-match-detail" hidden>
+    <div class="ps-match-detail-backdrop" id="ps-match-detail-backdrop"></div>
+    <div class="ps-match-detail-panel">
+      <button type="button" class="ps-match-detail-close" id="ps-match-detail-close" aria-label="Fermer">×</button>
+      <div id="ps-match-detail-body"></div>
+    </div>
+  </div>
+</div>
   `
 };
 
@@ -822,6 +939,7 @@ const LAZY_PAGE_SCRIPTS = Object.freeze({
   updates:     './scripts/pages/updates.js',
   review:      './scripts/pages/review.js',
   hunt:        './scripts/pages/hunt-share.js',
+  paris_sportifs: './scripts/pages/paris-sportifs.js?v=20260710c',
 });
 /** Scripts à charger avant la page (helpers partagés hub-features / tournoi). */
 const LAZY_PAGE_DEPS = Object.freeze({
